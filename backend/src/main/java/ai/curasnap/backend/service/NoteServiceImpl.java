@@ -2,6 +2,8 @@ package ai.curasnap.backend.service;
 
 import ai.curasnap.backend.model.dto.NoteRequest;
 import ai.curasnap.backend.model.dto.NoteResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -15,6 +17,9 @@ import java.util.UUID;
 @Service
 public class NoteServiceImpl implements NoteService {
 
+    // Classic SLF4J logger declaration
+    private static final Logger logger = LoggerFactory.getLogger(NoteServiceImpl.class);
+
     /**
      * Simulates formatting of a raw note using a placeholder logic.
      *
@@ -24,6 +29,8 @@ public class NoteServiceImpl implements NoteService {
      */
     @Override
     public NoteResponse formatNote(String userId, NoteRequest request) {
+        logger.info("Formatting note for user {}", userId);
+
         // Create dummy structured note using a static SOAP template
         String dummySoap = """
                 S: %s
@@ -32,12 +39,15 @@ public class NoteServiceImpl implements NoteService {
                 P: (plan placeholder)
                 """.formatted(request.getTextRaw());
 
-        return new NoteResponse(
+        NoteResponse response = new NoteResponse(
                 UUID.randomUUID(),
                 request.getTextRaw(),
                 dummySoap,
                 Instant.now()
         );
+
+        logger.debug("Generated note: {}", response.getTextStructured());
+        return response;
     }
 
     /**
@@ -48,6 +58,8 @@ public class NoteServiceImpl implements NoteService {
      */
     @Override
     public List<NoteResponse> getNotes(String userId) {
+        logger.info("Fetching notes for user {}", userId);
+
         NoteResponse dummyNote = new NoteResponse(
                 UUID.randomUUID(),
                 "Example input text from user.",
@@ -59,6 +71,8 @@ public class NoteServiceImpl implements NoteService {
                 """,
                 Instant.now()
         );
+
+        logger.debug("Returning dummy note for user {}: {}", userId, dummyNote.getTextStructured());
         return List.of(dummyNote);
     }
 }

@@ -1,3 +1,4 @@
+
 package ai.curasnap.backend.controller;
 
 import ai.curasnap.backend.model.dto.NoteRequest;
