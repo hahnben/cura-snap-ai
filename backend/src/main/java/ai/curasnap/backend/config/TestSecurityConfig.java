@@ -1,3 +1,4 @@
+
 package ai.curasnap.backend.config;
 
 import org.springframework.context.annotation.Bean;
@@ -9,6 +10,8 @@ import org.springframework.security.web.SecurityFilterChain;
  * Global security configuration that allows all requests.
  * Temporary solution for development and testing purposes.
  */
+
+/*
 @Configuration
 public class TestSecurityConfig {
 
@@ -22,3 +25,4 @@ public class TestSecurityConfig {
         return http.build();
     }
 }
+*/
