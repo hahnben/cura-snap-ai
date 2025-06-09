@@ -2,8 +2,13 @@ package ai.curasnap.backend.service;
 
 import ai.curasnap.backend.model.dto.NoteRequest;
 import ai.curasnap.backend.model.dto.NoteResponse;
+import ai.curasnap.backend.model.entity.SoapNote;
+import ai.curasnap.backend.repository.SoapNoteRepository;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -11,27 +16,44 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * Dummy implementation of NoteService.
- * This version does not interact with any real AI service or database.
+ * Default implementation of the NoteService.
+ *
+ * This service is responsible for:
+ * <ul>
+ *     <li>Formatting raw medical notes into a structured SOAP format (currently dummy logic)</li>
+ *     <li>Persisting the formatted note in the Supabase database</li>
+ * </ul>
+ *
+ * In a later phase, the formatting logic will be delegated to a Python-based AI service.
  */
 @Service
 public class NoteServiceImpl implements NoteService {
 
-    // Classic SLF4J logger declaration
     private static final Logger logger = LoggerFactory.getLogger(NoteServiceImpl.class);
 
+    private final SoapNoteRepository soapNoteRepository;
+
     /**
-     * Simulates formatting of a raw note using a placeholder logic.
+     * Constructs the service with a reference to the SoapNoteRepository.
+     *
+     * @param soapNoteRepository repository used for persisting structured SOAP notes
+     */
+    @Autowired
+    public NoteServiceImpl(SoapNoteRepository soapNoteRepository) {
+        this.soapNoteRepository = soapNoteRepository;
+    }
+
+    /**
+     * Formats a raw transcript using static SOAP placeholders and saves it to the database.
      *
      * @param userId  the authenticated user's ID
-     * @param request the raw input text from the client
-     * @return a formatted note with dummy content
+     * @param request the raw note content from the client
+     * @return a NoteResponse containing the formatted note
      */
     @Override
     public NoteResponse formatNote(String userId, NoteRequest request) {
-        logger.info("Formatting note for user {}", userId);
+        logger.info("Formatting and saving note for user {}", userId);
 
-        // Create dummy structured note using a static SOAP template
         String dummySoap = """
                 S: %s
                 O: (objective findings placeholder)
@@ -39,26 +61,35 @@ public class NoteServiceImpl implements NoteService {
                 P: (plan placeholder)
                 """.formatted(request.getTextRaw());
 
-        NoteResponse response = new NoteResponse(
-                UUID.randomUUID(),
+        Instant now = Instant.now();
+
+        SoapNote note = new SoapNote();
+        note.setUserId(UUID.fromString(userId));
+        note.setTranscriptId(null); // to be linked in later phases
+        note.setSessionId(null);    // to be linked in later phases
+        note.setTextStructured(dummySoap);
+        note.setCreatedAt(now);
+
+        soapNoteRepository.save(note);
+        logger.debug("Persisted SoapNote with ID {}", note.getId());
+
+        return new NoteResponse(
+                note.getId(),
                 request.getTextRaw(),
                 dummySoap,
-                Instant.now()
+                now
         );
-
-        logger.debug("Generated note: {}", response.getTextStructured());
-        return response;
     }
 
     /**
-     * Returns a hard-coded list of notes as placeholder.
+     * Returns a hard-coded dummy note for testing purposes.
      *
      * @param userId the authenticated user's ID
-     * @return a list with one dummy note
+     * @return a list containing one static example note
      */
     @Override
     public List<NoteResponse> getNotes(String userId) {
-        logger.info("Fetching notes for user {}", userId);
+        logger.info("Fetching dummy notes for user {}", userId);
 
         NoteResponse dummyNote = new NoteResponse(
                 UUID.randomUUID(),
@@ -72,7 +103,7 @@ public class NoteServiceImpl implements NoteService {
                 Instant.now()
         );
 
-        logger.debug("Returning dummy note for user {}: {}", userId, dummyNote.getTextStructured());
+        logger.debug("Returning dummy note: {}", dummyNote.getTextStructured());
         return List.of(dummyNote);
     }
 }
