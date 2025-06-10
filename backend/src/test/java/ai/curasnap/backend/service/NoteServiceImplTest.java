@@ -2,54 +2,70 @@ package ai.curasnap.backend.service;
 
 import ai.curasnap.backend.model.dto.NoteRequest;
 import ai.curasnap.backend.model.dto.NoteResponse;
-import org.junit.jupiter.api.Test;
+import ai.curasnap.backend.model.entity.SoapNote;
+import ai.curasnap.backend.repository.SoapNoteRepository;
 
-import java.util.List;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 /**
  * Unit tests for NoteServiceImpl.
  */
+@ExtendWith(MockitoExtension.class)
 class NoteServiceImplTest {
 
-    private final NoteServiceImpl noteService = new NoteServiceImpl();
+    @Mock
+    private SoapNoteRepository soapNoteRepository;
 
+    @InjectMocks
+    private NoteServiceImpl noteService;
+
+    /**
+     * Tests the formatNote method with valid input data.
+     * Verifies that a note is correctly structured and persisted.
+     */
     @Test
-    void shouldFormatNoteWithValidInput() {
+    void shouldFormatAndPersistNoteWithValidInput() {
         // Arrange
-        String userId = "test-user-id";
+        String userId = UUID.randomUUID().toString();
+        UUID transcriptId = UUID.randomUUID();
+        UUID sessionId = UUID.randomUUID();
+
         NoteRequest request = new NoteRequest();
-        request.setTextRaw("Patient klagt über Rückenschmerzen seit zwei Tagen.");
+        request.setTextRaw("Patient reports dizziness.");
+        request.setTranscriptId(transcriptId.toString());
+        request.setSessionId(sessionId.toString());
+
+        // Mock the repository to return the same object it receives
+     // Mock the repository to simulate JPA setting the ID
+        when(soapNoteRepository.save(any(SoapNote.class)))
+            .thenAnswer(invocation -> {
+                SoapNote saved = invocation.getArgument(0);
+                saved.setId(UUID.randomUUID()); // simulate generated ID from DB
+                return saved;
+            });
+
 
         // Act
-        NoteResponse response = noteService.formatNote(userId, request);
-
-        // Assert
-        assertNotNull(response);
-        assertEquals("Patient klagt über Rückenschmerzen seit zwei Tagen.", response.getTextRaw());
-        assertTrue(response.getTextStructured().contains("S: Patient klagt über Rückenschmerzen"));
-        assertTrue(response.getTextStructured().contains("A:"));
-        assertNotNull(response.getCreatedAt());
-        assertNotNull(response.getId());
-    }
-
-    @Test
-    void shouldReturnDummyNoteList() {
-        // Arrange
-        String userId = "test-user-id";
-
-        // Act
-        List<NoteResponse> result = noteService.getNotes(userId);
+        NoteResponse result = noteService.formatNote(userId, request);
 
         // Assert
         assertNotNull(result);
-        assertEquals(1, result.size());
+        assertEquals("Patient reports dizziness.", result.getTextRaw());
+        assertTrue(result.getTextStructured().contains("S: Patient reports dizziness."));
+        assertNotNull(result.getCreatedAt());
+        assertNotNull(result.getId());
 
-        NoteResponse note = result.get(0);
-        assertEquals("Example input text from user.", note.getTextRaw());
-        assertTrue(note.getTextStructured().contains("S: Example input text from user."));
-        assertNotNull(note.getId());
-        assertNotNull(note.getCreatedAt());
+        // Verify that the repository's save method was called
+        verify(soapNoteRepository, times(1)).save(any(SoapNote.class));
     }
 }
