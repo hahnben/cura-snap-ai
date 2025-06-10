@@ -65,8 +65,18 @@ public class NoteServiceImpl implements NoteService {
 
         SoapNote note = new SoapNote();
         note.setUserId(UUID.fromString(userId));
-        note.setTranscriptId(null); // to be linked in later phases
-        note.setSessionId(null);    // to be linked in later phases
+
+        // Parse and assign session and transcript IDs from request
+        try {
+            note.setTranscriptId(UUID.fromString(request.getTranscriptId()));
+            note.setSessionId(UUID.fromString(request.getSessionId()));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Invalid UUID format in request: {}", e.getMessage());
+            // Optional: throw custom exception or set fields to null if fallback needed
+            note.setTranscriptId(null);
+            note.setSessionId(null);
+        }
+
         note.setTextStructured(dummySoap);
         note.setCreatedAt(now);
 
@@ -80,6 +90,7 @@ public class NoteServiceImpl implements NoteService {
                 now
         );
     }
+
 
     /**
      * Returns a hard-coded dummy note for testing purposes.
