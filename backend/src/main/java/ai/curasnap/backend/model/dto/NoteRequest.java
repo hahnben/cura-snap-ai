@@ -11,35 +11,55 @@ public class NoteRequest {
     private String textRaw;
 
     /**
+     * ID of the related transcript.
+     */
+    private String transcriptId;
+
+    /**
+     * ID of the patient session this note belongs to.
+     */
+    private String sessionId;
+
+    /**
      * Default constructor.
      */
     public NoteRequest() {
     }
 
     /**
-     * Constructor with field.
+     * Constructor with all fields.
      *
-     * @param textRaw the raw transcript or unstructured text
+     * @param textRaw      raw input text
+     * @param transcriptId related transcript ID
+     * @param sessionId    related session ID
      */
-    public NoteRequest(String textRaw) {
+    public NoteRequest(String textRaw, String transcriptId, String sessionId) {
         this.textRaw = textRaw;
+        this.transcriptId = transcriptId;
+        this.sessionId = sessionId;
     }
 
-    /**
-     * Returns the raw input text.
-     *
-     * @return raw transcript
-     */
     public String getTextRaw() {
         return textRaw;
     }
 
-    /**
-     * Sets the raw input text.
-     *
-     * @param textRaw transcript to be formatted
-     */
     public void setTextRaw(String textRaw) {
         this.textRaw = textRaw;
+    }
+
+    public String getTranscriptId() {
+        return transcriptId;
+    }
+
+    public void setTranscriptId(String transcriptId) {
+        this.transcriptId = transcriptId;
+    }
+
+    public String getSessionId() {
+        return sessionId;
+    }
+
+    public void setSessionId(String sessionId) {
+        this.sessionId = sessionId;
     }
 }
