@@ -54,6 +54,7 @@ public class NoteServiceImpl implements NoteService {
     public NoteResponse formatNote(String userId, NoteRequest request) {
         logger.info("Formatting and saving note for user {}", userId);
 
+        // Create a dummy SOAP structure using the raw text from the request
         String dummySoap = """
                 S: %s
                 O: (objective findings placeholder)
@@ -65,20 +66,12 @@ public class NoteServiceImpl implements NoteService {
 
         SoapNote note = new SoapNote();
         note.setUserId(UUID.fromString(userId));
-
-        // Parse and assign session and transcript IDs from request
-        try {
-            note.setTranscriptId(UUID.fromString(request.getTranscriptId()));
-            note.setSessionId(UUID.fromString(request.getSessionId()));
-        } catch (IllegalArgumentException e) {
-            logger.warn("Invalid UUID format in request: {}", e.getMessage());
-            // Optional: throw custom exception or set fields to null if fallback needed
-            note.setTranscriptId(null);
-            note.setSessionId(null);
-        }
-
         note.setTextStructured(dummySoap);
         note.setCreatedAt(now);
+
+        // Currently no transcriptId or sessionId is available in request → leave null (DB must allow it)
+        note.setTranscriptId(null);
+        note.setSessionId(null);
 
         soapNoteRepository.save(note);
         logger.debug("Persisted SoapNote with ID {}", note.getId());
@@ -90,7 +83,6 @@ public class NoteServiceImpl implements NoteService {
                 now
         );
     }
-
 
     /**
      * Returns a hard-coded dummy note for testing purposes.
