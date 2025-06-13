@@ -3,7 +3,7 @@ package ai.curasnap.backend.controller;
 import ai.curasnap.backend.model.dto.NoteRequest;
 import ai.curasnap.backend.model.dto.NoteResponse;
 import ai.curasnap.backend.service.NoteService;
-import ai.curasnap.backend.config.TestSecurityConfig;
+import ai.curasnap.backend.config.SecurityConfig;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -40,7 +40,7 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
  * Tests the REST API endpoints and interaction with NoteService.
  */
 @WebMvcTest(NoteController.class)
-@Import(TestSecurityConfig.class)
+@Import(SecurityConfig.class)
 class NoteControllerTest {
 
     @Autowired
