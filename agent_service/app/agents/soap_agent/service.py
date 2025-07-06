@@ -21,12 +21,25 @@ model = OpenAIModel(
 agent = Agent(
     model=model,
     system_prompt="Du bist ein medizinischer Assistent. Erstelle eine strukturierte SOAP-Notiz.",
+    output_model=str,  # Expecting a single text block
     retries=1
 )
 
 
 
 async def format_transcript_to_soap(input_data: TranscriptInput) -> SoapNote:
+    """
+    Accepts a transcript and transforms it into a structured SOAP note using an LLM.
+    The result is wrapped into a SoapNote object with a single text field.
+    """
+    # Build the GPT prompt from the transcript
     prompt = build_prompt(input_data.transcript)
-    return await agent.run(prompt)
+
+    # Run the agent and receive plain structured text (as a single string)
+    result = await agent.run(prompt)
+    raw_output = result.output
+
+
+    # Return the result as a SoapNote (containing a single field: structured_text)
+    return SoapNote(structured_text=raw_output)
 

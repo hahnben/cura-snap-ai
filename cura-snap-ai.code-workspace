@@ -1,0 +1,44 @@
+{
+    "folders": [
+        {
+            "name": "Backend",
+            "path": "backend"
+        },
+        {
+            "name": "Frontend",
+            "path": "frontend"
+        },
+        {
+            "name": "Agent Service",
+            "path": "agent_service"
+        },
+        {
+            "name": "Transcription Service",
+            "path": "transcription_service"
+        },
+        {
+            "name": "Supabase Config",
+            "path": "supabase"
+        },
+        {
+            "name": "Reverse Proxy",
+            "path": "reverse-proxy"
+        }
+    ],
+    "settings": {
+        // Activate Pipenv as Python interpreter
+        "python.terminal.activateEnvironment": true,
+        "python.venvPath": "C:\Users\Nutzer\.virtualenvs\agent_service-gmqLm_e_",
+        "python.defaultInterpreterPath": "pipenv",
+        // Enable formatting with Black
+        "python.formatting.provider": "black",
+        "editor.formatOnSave": true,
+        // Linting (optional)
+        "python.linting.enabled": true,
+        "python.linting.flake8Enabled": true,
+        // Terminal settings
+        "terminal.integrated.env.windows": {
+            "PIPENV_VENV_IN_PROJECT": "1"
+        }
+    }
+}

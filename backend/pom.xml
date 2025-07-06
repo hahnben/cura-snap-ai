@@ -87,6 +87,12 @@
   			<artifactId>postgresql</artifactId>
   			<scope>runtime</scope>
 		</dependency>
+		<!-- MockWebServer for testing HTTP clients -->
+		<dependency>
+    		<groupId>com.squareup.okhttp3</groupId>
+    		<artifactId>mockwebserver</artifactId>
+    		<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
