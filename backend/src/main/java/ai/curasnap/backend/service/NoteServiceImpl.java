@@ -32,19 +32,22 @@ public class NoteServiceImpl implements NoteService {
     private static final Logger logger = LoggerFactory.getLogger(NoteServiceImpl.class);
 
     private final SoapNoteRepository soapNoteRepository;
+    private final AgentServiceClient agentServiceClient;
 
     /**
-     * Constructs the service with a reference to the SoapNoteRepository.
+     * Constructs the service with a reference to the SoapNoteRepository and AgentServiceClient.
      *
      * @param soapNoteRepository repository used for persisting structured SOAP notes
+     * @param agentServiceClient client for communicating with the Agent Service
      */
     @Autowired
-    public NoteServiceImpl(SoapNoteRepository soapNoteRepository) {
+    public NoteServiceImpl(SoapNoteRepository soapNoteRepository, AgentServiceClient agentServiceClient) {
         this.soapNoteRepository = soapNoteRepository;
+        this.agentServiceClient = agentServiceClient;
     }
 
     /**
-     * Formats a raw transcript using static SOAP placeholders and saves it to the database.
+     * Formats a raw transcript using the Agent Service or falls back to dummy placeholders.
      *
      * @param userId  the authenticated user's ID
      * @param request the raw note content from the client
@@ -54,19 +57,32 @@ public class NoteServiceImpl implements NoteService {
     public NoteResponse formatNote(String userId, NoteRequest request) {
         logger.info("Formatting and saving note for user {}", userId);
 
-        // Create a dummy SOAP structure using the raw text from the request
-        String dummySoap = """
-                S: %s
-                O: (objective findings placeholder)
-                A: (assessment placeholder)
-                P: (plan placeholder)
-                """.formatted(request.getTextRaw());
+        String structuredText;
+        
+        // Try to use the Agent Service first
+        if (agentServiceClient.isAgentServiceAvailable()) {
+            logger.debug("Attempting to use Agent Service for SOAP note generation");
+            structuredText = agentServiceClient.formatTranscriptToSoap(request.getTextRaw());
+        } else {
+            structuredText = null;
+        }
+        
+        // Fallback to dummy SOAP structure if Agent Service is unavailable
+        if (structuredText == null) {
+            logger.debug("Agent Service unavailable, using dummy SOAP structure");
+            structuredText = """
+                    S: %s
+                    O: (objective findings placeholder)
+                    A: (assessment placeholder)
+                    P: (plan placeholder)
+                    """.formatted(request.getTextRaw());
+        }
 
         Instant now = Instant.now();
 
         SoapNote note = new SoapNote();
         note.setUserId(UUID.fromString(userId));
-        note.setTextStructured(dummySoap);
+        note.setTextStructured(structuredText);
         note.setCreatedAt(now);
 
         // Currently no transcriptId or sessionId is available in request → leave null (DB must allow it)
@@ -79,7 +95,7 @@ public class NoteServiceImpl implements NoteService {
         return new NoteResponse(
                 note.getId(),
                 request.getTextRaw(),
-                dummySoap,
+                structuredText,
                 now
         );
     }

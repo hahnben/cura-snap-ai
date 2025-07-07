@@ -3,7 +3,7 @@ package ai.curasnap.backend.controller;
 import ai.curasnap.backend.model.dto.NoteRequest;
 import ai.curasnap.backend.model.dto.NoteResponse;
 import ai.curasnap.backend.service.NoteService;
-import ai.curasnap.backend.config.SecurityConfig;
+// import ai.curasnap.backend.config.TestSecurityConfig;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,8 +12,9 @@ import org.mockito.Mockito;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
-import org.springframework.context.annotation.Import;
+// import org.springframework.context.annotation.Import;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureWebMvc;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 
 import org.springframework.test.web.servlet.MockMvc;
@@ -39,8 +40,11 @@ import org.springframework.test.web.servlet.request.RequestPostProcessor;
  * Unit tests for the NoteController using MockMvc.
  * Tests the REST API endpoints and interaction with NoteService.
  */
-@WebMvcTest(NoteController.class)
-@Import(SecurityConfig.class)
+@WebMvcTest(controllers = NoteController.class, 
+            excludeAutoConfiguration = {
+                org.springframework.boot.autoconfigure.security.servlet.SecurityAutoConfiguration.class,
+                org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration.class
+            })
 class NoteControllerTest {
 
     @Autowired
@@ -90,7 +94,6 @@ class NoteControllerTest {
             """;
 
         mockMvc.perform(post("/api/v1/notes/format")
-                .with(jwtWithSubject("test-user")) // Simulating security context
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
             .andExpect(status().isOk())
@@ -98,18 +101,46 @@ class NoteControllerTest {
             .andExpect(jsonPath("$.textRaw").value("Patient reports dizziness."));
 
     }
+
+    /**
+     * Tests POST /api/v1/notes/format with Agent Service generated content.
+     */
+    @Test
+    @DisplayName("POST /api/v1/notes/format with Agent Service returns AI-formatted note")
+    void formatNoteWithAgentServiceReturnsAIResponse() throws Exception {
+        NoteResponse aiResponse = new NoteResponse(
+                UUID.randomUUID(),
+                "Patient reports dizziness.",
+                "ANAMNESE:\nPatient reports dizziness.\n\nUNTERSUCHUNG:\n...\n\nBEURTEILUNG:\n...\n\nTHERAPIE:\n...",
+                Instant.now()
+        );
+
+        Mockito.when(noteService.formatNote(any(), any())).thenReturn(aiResponse);
+
+        String json = """
+            {
+              "textRaw": "Patient reports dizziness."
+            }
+            """;
+
+        mockMvc.perform(post("/api/v1/notes/format")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(json))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.textStructured").value("ANAMNESE:\nPatient reports dizziness.\n\nUNTERSUCHUNG:\n...\n\nBEURTEILUNG:\n...\n\nTHERAPIE:\n..."))
+            .andExpect(jsonPath("$.textRaw").value("Patient reports dizziness."))
+            .andExpect(jsonPath("$.id").exists())
+            .andExpect(jsonPath("$.createdAt").exists());
+    }
     
     /**
      * Creates a mock JWT-based authentication with the given subject (user ID).
      */
     private static RequestPostProcessor jwtWithSubject(String subject) {
-        Jwt jwt = Jwt.withTokenValue("mock-token")
-                .header("alg", "none")
-                .claim("sub", subject)
-                .build();
-
-        JwtAuthenticationToken authentication = new JwtAuthenticationToken(jwt);
-        return SecurityMockMvcRequestPostProcessors.authentication(authentication);
+        return request -> {
+            request.setAttribute("authentication.principal.subject", subject);
+            return request;
+        };
     }
     
     /**
@@ -126,7 +157,6 @@ class NoteControllerTest {
             """;
 
         mockMvc.perform(post("/api/v1/notes/format")
-                .with(jwtWithSubject("test-user"))
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json))
             .andExpect(status().isBadRequest());
@@ -147,8 +177,7 @@ class NoteControllerTest {
 
         Mockito.when(noteService.getNotes(any())).thenReturn(List.of(note));
 
-        mockMvc.perform(get("/api/v1/notes")
-                .with(jwtWithSubject("test-user")))
+        mockMvc.perform(get("/api/v1/notes"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$[0].textRaw").value("Example input"))
             .andExpect(jsonPath("$[0].textStructured").exists());
