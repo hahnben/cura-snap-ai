@@ -93,6 +93,9 @@ public class AgentServiceClient {
     public static class TranscriptRequest {
         private String transcript;
 
+        public TranscriptRequest() {
+        }
+
         public TranscriptRequest(String transcript) {
             this.transcript = transcript;
         }
