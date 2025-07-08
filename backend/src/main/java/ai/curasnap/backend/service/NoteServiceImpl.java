@@ -3,6 +3,7 @@ package ai.curasnap.backend.service;
 import ai.curasnap.backend.model.dto.NoteRequest;
 import ai.curasnap.backend.model.dto.NoteResponse;
 import ai.curasnap.backend.model.entity.SoapNote;
+import ai.curasnap.backend.model.entity.Transcript;
 import ai.curasnap.backend.repository.SoapNoteRepository;
 
 import org.slf4j.Logger;
@@ -33,17 +34,20 @@ public class NoteServiceImpl implements NoteService {
 
     private final SoapNoteRepository soapNoteRepository;
     private final AgentServiceClient agentServiceClient;
+    private final TranscriptService transcriptService;
 
     /**
-     * Constructs the service with a reference to the SoapNoteRepository and AgentServiceClient.
+     * Constructs the service with a reference to the SoapNoteRepository, AgentServiceClient, and TranscriptService.
      *
      * @param soapNoteRepository repository used for persisting structured SOAP notes
      * @param agentServiceClient client for communicating with the Agent Service
+     * @param transcriptService service for managing transcripts
      */
     @Autowired
-    public NoteServiceImpl(SoapNoteRepository soapNoteRepository, AgentServiceClient agentServiceClient) {
+    public NoteServiceImpl(SoapNoteRepository soapNoteRepository, AgentServiceClient agentServiceClient, TranscriptService transcriptService) {
         this.soapNoteRepository = soapNoteRepository;
         this.agentServiceClient = agentServiceClient;
+        this.transcriptService = transcriptService;
     }
 
     /**
@@ -55,7 +59,28 @@ public class NoteServiceImpl implements NoteService {
      */
     @Override
     public NoteResponse formatNote(String userId, NoteRequest request) {
-        logger.info("Formatting and saving note for user {}", userId);
+        logger.info("Formatting and saving note for authenticated user");
+
+        UUID userUuid = UUID.fromString(userId);
+        UUID sessionId = null;
+        
+        // Parse sessionId if provided
+        if (request.getSessionId() != null && !request.getSessionId().isEmpty()) {
+            try {
+                sessionId = UUID.fromString(request.getSessionId());
+            } catch (IllegalArgumentException e) {
+                logger.warn("Invalid sessionId format provided");
+                // Continue with null sessionId - this is not a fatal error
+            }
+        }
+
+        // Create transcript record
+        Transcript transcript = transcriptService.createTranscript(
+                userUuid, 
+                sessionId, 
+                "text", 
+                request.getTextRaw()
+        );
 
         String structuredText;
         
@@ -81,16 +106,14 @@ public class NoteServiceImpl implements NoteService {
         Instant now = Instant.now();
 
         SoapNote note = new SoapNote();
-        note.setUserId(UUID.fromString(userId));
+        note.setUserId(userUuid);
+        note.setTranscriptId(transcript.getId());
+        note.setSessionId(sessionId);
         note.setTextStructured(structuredText);
         note.setCreatedAt(now);
 
-        // Currently no transcriptId or sessionId is available in request → leave null (DB must allow it)
-        note.setTranscriptId(null);
-        note.setSessionId(null);
-
         soapNoteRepository.save(note);
-        logger.debug("Persisted SoapNote with ID {}", note.getId());
+        logger.debug("Persisted SoapNote successfully linked to transcript");
 
         return new NoteResponse(
                 note.getId(),
@@ -108,7 +131,7 @@ public class NoteServiceImpl implements NoteService {
      */
     @Override
     public List<NoteResponse> getNotes(String userId) {
-        logger.info("Fetching dummy notes for user {}", userId);
+        logger.info("Fetching notes for authenticated user");
 
         NoteResponse dummyNote = new NoteResponse(
                 UUID.randomUUID(),

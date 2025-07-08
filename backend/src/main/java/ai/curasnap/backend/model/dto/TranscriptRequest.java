@@ -5,26 +5,26 @@ import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.Pattern;
 
 /**
- * DTO representing a request to format a raw transcript into a structured medical note.
+ * DTO representing a request to create a new transcript.
  */
-public class NoteRequest {
+public class TranscriptRequest {
 
     /**
-     * The raw input text provided by the user.
+     * The raw input text or audio content.
      */
     @NotBlank(message = "Text content is required")
     @Size(max = 10000, message = "Text content must not exceed 10000 characters")
     private String textRaw;
 
     /**
-     * ID of the related transcript.
+     * The type of input (e.g., "text", "audio").
      */
-    @Pattern(regexp = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", 
-             message = "Transcript ID must be a valid UUID format")
-    private String transcriptId;
+    @NotBlank(message = "Input type is required")
+    @Pattern(regexp = "^(text|audio)$", message = "Input type must be 'text' or 'audio'")
+    private String inputType;
 
     /**
-     * ID of the patient session this note belongs to.
+     * ID of the patient session this transcript belongs to.
      */
     @Pattern(regexp = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", 
              message = "Session ID must be a valid UUID format")
@@ -33,19 +33,19 @@ public class NoteRequest {
     /**
      * Default constructor.
      */
-    public NoteRequest() {
+    public TranscriptRequest() {
     }
 
     /**
      * Constructor with all fields.
      *
-     * @param textRaw      raw input text
-     * @param transcriptId related transcript ID
-     * @param sessionId    related session ID
+     * @param textRaw   raw input text
+     * @param inputType type of input
+     * @param sessionId related session ID
      */
-    public NoteRequest(String textRaw, String transcriptId, String sessionId) {
+    public TranscriptRequest(String textRaw, String inputType, String sessionId) {
         this.textRaw = textRaw;
-        this.transcriptId = transcriptId;
+        this.inputType = inputType;
         this.sessionId = sessionId;
     }
 
@@ -57,12 +57,12 @@ public class NoteRequest {
         this.textRaw = textRaw;
     }
 
-    public String getTranscriptId() {
-        return transcriptId;
+    public String getInputType() {
+        return inputType;
     }
 
-    public void setTranscriptId(String transcriptId) {
-        this.transcriptId = transcriptId;
+    public void setInputType(String inputType) {
+        this.inputType = inputType;
     }
 
     public String getSessionId() {

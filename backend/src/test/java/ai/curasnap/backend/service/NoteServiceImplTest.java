@@ -3,6 +3,7 @@ package ai.curasnap.backend.service;
 import ai.curasnap.backend.model.dto.NoteRequest;
 import ai.curasnap.backend.model.dto.NoteResponse;
 import ai.curasnap.backend.model.entity.SoapNote;
+import ai.curasnap.backend.model.entity.Transcript;
 import ai.curasnap.backend.repository.SoapNoteRepository;
 
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,9 @@ class NoteServiceImplTest {
     @Mock
     private AgentServiceClient agentServiceClient;
 
+    @Mock
+    private TranscriptService transcriptService;
+
     @InjectMocks
     private NoteServiceImpl noteService;
 
@@ -49,6 +53,16 @@ class NoteServiceImplTest {
         request.setSessionId(sessionId.toString());
 
         String agentServiceResponse = "ANAMNESE:\nPatient reports dizziness.\n\nUNTERSUCHUNG:\n...\n\nBEURTEILUNG:\n...\n\nTHERAPIE:\n...";
+
+        // Mock TranscriptService
+        Transcript mockTranscript = new Transcript();
+        mockTranscript.setId(transcriptId);
+        mockTranscript.setUserId(UUID.fromString(userId));
+        mockTranscript.setSessionId(sessionId);
+        mockTranscript.setInputType("text");
+        mockTranscript.setTextRaw("Patient reports dizziness.");
+        when(transcriptService.createTranscript(UUID.fromString(userId), sessionId, "text", "Patient reports dizziness."))
+            .thenReturn(mockTranscript);
 
         // Mock Agent Service
         when(agentServiceClient.isAgentServiceAvailable()).thenReturn(true);
@@ -72,7 +86,8 @@ class NoteServiceImplTest {
         assertNotNull(result.getCreatedAt());
         assertNotNull(result.getId());
 
-        // Verify that the Agent Service was called
+        // Verify that services were called correctly
+        verify(transcriptService, times(1)).createTranscript(UUID.fromString(userId), sessionId, "text", "Patient reports dizziness.");
         verify(agentServiceClient, times(1)).isAgentServiceAvailable();
         verify(agentServiceClient, times(1)).formatTranscriptToSoap("Patient reports dizziness.");
         verify(soapNoteRepository, times(1)).save(any(SoapNote.class));
@@ -93,6 +108,16 @@ class NoteServiceImplTest {
         request.setTextRaw("Patient reports dizziness.");
         request.setTranscriptId(transcriptId.toString());
         request.setSessionId(sessionId.toString());
+
+        // Mock TranscriptService
+        Transcript mockTranscript = new Transcript();
+        mockTranscript.setId(transcriptId);
+        mockTranscript.setUserId(UUID.fromString(userId));
+        mockTranscript.setSessionId(sessionId);
+        mockTranscript.setInputType("text");
+        mockTranscript.setTextRaw("Patient reports dizziness.");
+        when(transcriptService.createTranscript(UUID.fromString(userId), sessionId, "text", "Patient reports dizziness."))
+            .thenReturn(mockTranscript);
 
         // Mock Agent Service as unavailable
         when(agentServiceClient.isAgentServiceAvailable()).thenReturn(false);
@@ -116,7 +141,8 @@ class NoteServiceImplTest {
         assertNotNull(result.getCreatedAt());
         assertNotNull(result.getId());
 
-        // Verify that Agent Service was checked but not called for formatting
+        // Verify that services were called correctly
+        verify(transcriptService, times(1)).createTranscript(UUID.fromString(userId), sessionId, "text", "Patient reports dizziness.");
         verify(agentServiceClient, times(1)).isAgentServiceAvailable();
         verify(agentServiceClient, never()).formatTranscriptToSoap(any());
         verify(soapNoteRepository, times(1)).save(any(SoapNote.class));
@@ -137,6 +163,16 @@ class NoteServiceImplTest {
         request.setTextRaw("Patient reports dizziness.");
         request.setTranscriptId(transcriptId.toString());
         request.setSessionId(sessionId.toString());
+
+        // Mock TranscriptService
+        Transcript mockTranscript = new Transcript();
+        mockTranscript.setId(transcriptId);
+        mockTranscript.setUserId(UUID.fromString(userId));
+        mockTranscript.setSessionId(sessionId);
+        mockTranscript.setInputType("text");
+        mockTranscript.setTextRaw("Patient reports dizziness.");
+        when(transcriptService.createTranscript(UUID.fromString(userId), sessionId, "text", "Patient reports dizziness."))
+            .thenReturn(mockTranscript);
 
         // Mock Agent Service as available but returning null (e.g., network error)
         when(agentServiceClient.isAgentServiceAvailable()).thenReturn(true);
@@ -161,7 +197,8 @@ class NoteServiceImplTest {
         assertNotNull(result.getCreatedAt());
         assertNotNull(result.getId());
 
-        // Verify that Agent Service was called but fallback was used
+        // Verify that services were called correctly
+        verify(transcriptService, times(1)).createTranscript(UUID.fromString(userId), sessionId, "text", "Patient reports dizziness.");
         verify(agentServiceClient, times(1)).isAgentServiceAvailable();
         verify(agentServiceClient, times(1)).formatTranscriptToSoap("Patient reports dizziness.");
         verify(soapNoteRepository, times(1)).save(any(SoapNote.class));
