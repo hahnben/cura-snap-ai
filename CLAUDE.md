@@ -133,8 +133,18 @@ pipenv run pytest
 - Authentication flow integrates with Supabase Auth
 - All services support Docker containerization
 
+## Kontext
+
+Studiere die folgenden Dateien:
+- modelling.md
+- roadmap.md
+
+## MCP Configuration
+- Use mcp__context7 for every coding task
+
 ## Standard Workflow
-1. Denke zunächst über das Problem nach, suche in der Codebasis nach relevanten Dateien und schreibe einen Plan in tasks/todo.md.
+
+1. Denke zunächst über das Problem nach, schaue in der Codebasis nach relevanten Dateien und schreibe einen Plan in tasks/todo.md.
 2. Der Plan sollte eine Liste mit Aufgaben enthalten, die du abhaken kannst, sobald du sie erledigt hast.
 3. Bevor du mit der Arbeit beginnst, melde dich bei mir, damit ich den Plan überprüfen kann.
 4. Beginne dann mit der Bearbeitung der Aufgaben und markiere sie nach und nach als erledigt.
