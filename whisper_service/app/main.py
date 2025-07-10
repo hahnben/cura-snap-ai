@@ -1,11 +1,21 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 import whisper
-import tempfile
 import os
 from typing import Dict
 import logging
 from .config import config
+from .security import (
+    sanitize_filename, 
+    validate_file_extension, 
+    validate_audio_content, 
+    create_secure_temp_file,
+    safe_cleanup_temp_file,
+    get_generic_error_message,
+    SecurityError,
+    PathTraversalError,
+    InvalidFileError
+)
 
 # Configure logging
 logging.basicConfig(level=getattr(logging, config.LOG_LEVEL))
@@ -47,53 +57,68 @@ async def transcribe_audio(file: UploadFile = File(...)) -> Dict[str, str]:
         JSON response with transcribed text
     """
     if not model:
-        raise HTTPException(status_code=500, detail="Whisper model not loaded")
+        logger.error("Whisper model not loaded")
+        raise HTTPException(status_code=500, detail=get_generic_error_message('server_error'))
     
-    # Validate file type
-    file_extension = os.path.splitext(file.filename)[1].lower()
-    
-    if file_extension not in config.ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Unsupported file format: {file_extension}. Supported formats: {', '.join(config.ALLOWED_EXTENSIONS)}"
-        )
-    
-    # Validate file size
-    max_size = config.MAX_FILE_SIZE
+    temp_file_path = None
     
     try:
-        # Read file content
+        # Sanitize filename (prevents path traversal)
+        sanitized_filename = sanitize_filename(file.filename)
+        logger.info(f"Processing file: {sanitized_filename}")
+        
+        # Validate file extension
+        file_extension = validate_file_extension(sanitized_filename, config.ALLOWED_EXTENSIONS)
+        
+        # Read and validate file content
         file_content = await file.read()
         
-        if len(file_content) > max_size:
+        # Validate file size
+        if len(file_content) > config.MAX_FILE_SIZE:
+            logger.warning(f"File too large: {len(file_content)} bytes")
             raise HTTPException(
                 status_code=413, 
-                detail=f"File too large. Maximum size: {max_size // (1024*1024)}MB"
+                detail=get_generic_error_message('file_size')
             )
         
-        # Create temporary file for Whisper processing
-        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
-            temp_file.write(file_content)
-            temp_file_path = temp_file.name
+        # Validate audio content using magic numbers
+        if not validate_audio_content(file_content, file_extension):
+            logger.warning(f"Invalid audio content for file: {sanitized_filename}")
+            raise HTTPException(
+                status_code=400,
+                detail=get_generic_error_message('file_validation')
+            )
         
-        try:
-            logger.info(f"Transcribing audio file: {file.filename}")
-            
-            # Transcribe audio using Whisper
-            result = model.transcribe(temp_file_path)
-            
-            logger.info(f"Transcription completed for: {file.filename}")
-            
-            return {"transcript": result["text"].strip()}
-            
-        finally:
-            # Clean up temporary file
-            if os.path.exists(temp_file_path):
-                os.unlink(temp_file_path)
-    
+        # Create secure temporary file
+        temp_file_path = create_secure_temp_file(file_content, file_extension)
+        
+        # Transcribe audio using Whisper
+        logger.info(f"Starting transcription for: {sanitized_filename}")
+        result = model.transcribe(temp_file_path)
+        logger.info(f"Transcription completed for: {sanitized_filename}")
+        
+        return {"transcript": result["text"].strip()}
+        
+    except PathTraversalError as e:
+        logger.error(f"Path traversal attempt: {e}")
+        raise HTTPException(status_code=400, detail=get_generic_error_message('path_traversal'))
+        
+    except InvalidFileError as e:
+        logger.error(f"Invalid file: {e}")
+        raise HTTPException(status_code=400, detail=get_generic_error_message('file_validation'))
+        
+    except SecurityError as e:
+        logger.error(f"Security error: {e}")
+        raise HTTPException(status_code=500, detail=get_generic_error_message('server_error'))
+        
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=get_generic_error_message('processing'))
+        
+    finally:
+        # Always clean up temporary file
+        if temp_file_path:
+            safe_cleanup_temp_file(temp_file_path)
 
 if __name__ == "__main__":
     import uvicorn
