@@ -146,18 +146,29 @@ Endpoints und Sicherheitsmechanismen. Insbesondere soll hier die
 - **Phase 2**: Transcript Management mit Security-Layer (Input-Processing-Pipeline)
 - **Phase 3**: Backend REST API mit JWT-Authentifizierung und Database Integration
 - **Phase 4**: KI-Agent Service mit pydantic-ai Integration
+- **Phase 5-A**: n8n Testing Framework als Frontend-Alternative
+- **Phase 5-B Foundation**: Whisper Service mit umfassender Security-Layer
 
 ### 🚀 **Production-Ready Features:**
 - **End-to-End Pipeline**: cURL → Backend → Database → Response funktioniert
+- **n8n Chat Interface**: Chat-Input → Backend → SOAP-Output über n8n-Workflow
+- **Whisper Service Foundation**: FastAPI-Service mit Mock-Transkription
+- **Comprehensive Security**: Path Traversal Prevention, Magic Number Validation, Information Disclosure Prevention
+- **Secure File Handling**: 0600 permissions, crypto-secure temp files, guaranteed cleanup
 - **Security**: Input-Validierung, Autorisierung, sanitisiertes Logging
 - **Error Handling**: Graceful Recovery, benutzerfreundliche Messages
 - **Database**: Foreign Key Relations, Transaction Management
 - **Testing**: Unit Tests, Integration Tests, Manual Testing
 
-### 📋 **Nächste Entwicklungsschritte:**
-1. **Session Management** (Phase 2 Erweiterung) - Organisationsstruktur für Patientensitzungen
-2. **Frontend MVP** (Phase 5) - Text-Input Interface für direktes Testen
-3. **Audio Integration** (Phase 6/7) - Whisper Service für Spracherkennung
+### 📋 **Nächste Entwicklungsschritte (Aktualisiert Juli 2025):**
+1. **Whisper Integration vervollständigen** (Phase 5-B Fortsetzung) - openai-whisper Installation + echte Transkription (HÖCHSTE PRIORITÄT)
+2. **Backend Audio-Endpoint** (Phase 5-B Fortsetzung) - Spring Boot `/format-audio` Implementation
+3. **End-to-End Audio-Pipeline** (Phase 5-B Abschluss) - Vollständige Audio-zu-SOAP-Pipeline
+4. **n8n Audio-Workflow & User-Testing** (Phase 5-C) - Audio-Testing über n8n Backend-Integration
+5. **Session Management & Integration Testing** (Phase 6) - Comprehensive Testing via n8n
+6. **Frontend MVP** (Phase 7) - Nach vollständiger Validierung aller Services
+
+**🎯 Architektur-Fokus:** Backend-zentrierte Audio-Pipeline für optimale Sicherheit und Performance
 
 ---
 
@@ -189,125 +200,302 @@ API-Schnittstelle und **pydantic-ai** zur KI-Integration.
 **Meilenstein:** *Der KI-Agent läuft eigenständig und kann einen
 gegebenen Freitext in strukturierte Notizdaten umwandeln.* 🤖
 
-## Phase 5: Frontend MVP -- Text-Input und Ergebnisanzeige {#phase-5-frontend-mvp-text-input-und-ergebnisanzeige}
+## Phase 5-A: n8n Testing Framework -- Frontend-Alternative {#phase-5-a-n8n-testing-framework}
 
-**Ziel:** Einen einfachen Frontend-Prototypen entwickeln, der zunächst mit Text-Input arbeitet (statt Audio). Dies ermöglicht frühe End-to-End Tests und UI-Entwicklung parallel zum Whisper-Service.
-
-**Wichtige Aufgaben:**
-
-- UI-Grundgerüst mit Svelte entwickeln
-- Text-Input Feld für Transkript-Simulation
-- Backend-Integration für SOAP-Generierung
-- Einfache Ergebnisanzeige
-- Authentication Flow mit Supabase
-
-### Checkliste Phase 5
-
-- [ ] Svelte-App Grundstruktur erstellt
-- [ ] Login-Komponente mit Supabase Auth
-- [ ] Text-Input Feld für Transkript-Eingabe
-- [ ] Submit-Button zum Senden an Backend
-- [ ] Backend-Aufruf implementiert (POST /api/notes/format)
-- [ ] JWT-Token im Authorization Header korrekt übertragen
-- [ ] Antwort (strukturierte SOAP-Notiz) wird im UI angezeigt
-- [ ] Einfaches Layout mit:
-  - [ ] Login/Logout Funktionalität
-  - [ ] Text-Input Bereich
-  - [ ] Submit-Button
-  - [ ] Ergebnisanzeige (strukturierter Text, z. B. SOAP)
-- [ ] Fehlerbehandlung bei Netzwerkfehlern, Authentication-Problemen
-- [ ] Loading-States während API-Aufrufen
-
-**Meilenstein:** Nutzer kann sich einloggen, Text eingeben und erhält strukturierte SOAP-Notizen zurück. End-to-End Flow ohne Audio funktioniert. 📝
-
-## Phase 6: Whisper-Service -- Audio zu Transkript {#phase-6-whisper-service-audio-zu-transkript}
-
-**Ziel:** Aufbau eines Python-Dienstes (FastAPI), der gesprochene
-Audiodaten entgegennimmt und lokal mittels Whisper transkribiert. Dieser
-Dienst ersetzt die Web Speech API aus der früheren Architektur
-vollständig.
+**Ziel:** Dokumentation und Nutzung des n8n-Workflows als vollwertiger Frontend-Ersatz für die Entwicklungsphase. Ermöglicht sofortiges Testen ohne Frontend-Entwicklung.
 
 **Wichtige Aufgaben:**
 
-- REST-Endpunkt /transcribe (POST) erstellen
-- UploadFile (Audio) empfangen und lokal speichern
-- Transkription mit Whisper oder faster-whisper durchführen
-- Antwort als JSON { transcript: "..." }
-- Test mit Beispieldateien (mp3/wav)
+- n8n-Workflow als Testschnittstelle etablieren
+- Chat-basierte Eingabe für medizinische Notizen
+- Direkte Backend-API-Integration dokumentieren
+- JWT-Authentifizierung über n8n konfigurieren
+- Strukturierte SOAP-Ausgabe optimieren
+
+### Checkliste Phase 5-A
+
+- [x] n8n-Workflow erstellt und getestet (`n8n-curasnap-workflow.json`)
+- [x] Chat Trigger für benutzerfreundliche Eingabe implementiert
+- [x] Backend-API-Integration (POST /api/v1/notes/format) funktioniert
+- [x] JWT-Authentifizierung mit Supabase über n8n konfiguriert
+- [x] Request-Daten-Formatierung (textRaw) implementiert
+- [x] SOAP-Response-Extraktion für Chat-Ausgabe optimiert
+- [x] Setup-Dokumentation erstellt (`n8n-workflow-setup.md`)
+- [x] Fehlerbehebung und Debugging-Anweisungen dokumentiert
+- [x] End-to-End-Test: Chat-Input → Backend → SOAP-Output erfolgreich
+
+**Meilenstein:** ✅ **ERREICHT** - n8n-Workflow funktioniert als vollwertiger Frontend-Ersatz. Ärzte können medizinische Notizen über Chat eingeben und erhalten strukturierte SOAP-Notizen zurück. 🤖💬
+
+## Phase 5-B: Backend Audio-Integration & Whisper Service (Höchste Priorität) {#phase-5-b-backend-audio-integration-whisper-service}
+
+**Ziel:** Vollständige Audio-zu-SOAP-Pipeline implementieren durch Backend-zentrierte Architektur. Entwicklung eines lokalen Whisper-Services und Integration in das Spring Boot Backend für sichere, performante Audio-Verarbeitung.
+
+**Architektur-Entscheidung:** Backend-zentrierter Flow für optimale Sicherheit und Performance:
+```
+Frontend → Backend (/format-audio) → Whisper Service → Backend → AI Agent → Database
+```
+
+**🔐 Sicherheits-Überlegungen:**
+- **Minimale Attack Surface**: Nur Backend exponiert, Whisper Service intern
+- **Zentrale Authentifizierung**: JWT-Validation nur im Backend
+- **Audio-File-Validation**: Größe, Format, Malware-Schutz im Backend
+- **Audit Trail**: Vollständige Nachverfolgbarkeit aller Audio-Requests
+- **Data Protection**: Audio-Daten nur zwischen Backend und Whisper
+
+**⚡ Performance-Überlegungen:**
+- **Streaming Upload**: Direkte Weiterleitung ohne temporäre Backend-Speicherung
+- **Connection Pooling**: HTTP-Client-Pool für Whisper Service-Calls
+- **Timeout Management**: Angemessene Timeouts für Audio-Processing
+- **Memory Optimization**: Efficient Audio-File-Handling ohne Memory-Leaks
+- **Caching Strategy**: Häufige Transkripte können gecacht werden
+
+**Wichtige Aufgaben:**
+
+- **Whisper Service (FastAPI)**: Lokale Entwicklung ohne Docker
+- **Backend Audio-Endpoint**: `/api/v1/notes/format-audio` implementieren
+- **Service-Integration**: Backend ↔ Whisper HTTP-Kommunikation
+- **Audio-Pipeline**: Audio → Whisper → Transcript → SOAP → Database
+- **Security & Validation**: Audio-File-Größe, Format, Malware-Schutz
+- **End-to-End-Testing**: cURL-Tests der kompletten Pipeline
+
+### Checkliste Phase 5-B
+
+#### ✅ Whisper Service Foundation (ERREICHT - Juli 2025)
+- [x] **FastAPI-Route /transcribe erstellt** (POST, UploadFile) ✨
+- [⚠️] **Whisper (openai-whisper) Installation** - Torch-Dependencies unterbrochen (800MB+ Download Timeout)
+- [x] **Lokale Entwicklungsumgebung** (uvicorn, Port 8002) ✨
+- [x] **SICHERE Audio-File-Empfang** und temporäre Speicherung (0600 permissions, crypto-secure filenames) ✨
+- [⚠️] **Transkription durch Whisper-Modell** - Mock implementiert, echtes Modell ausstehend
+- [x] **JSON-Response im Format** `{ "transcript": "..." }` ✨
+- [x] **ERWEITERTE Error-Handling** für ungültige/korrupte Audio-Files ✨
+- [x] **Pipenv + requirements.txt** für Dependency-Management ✨
+
+#### 🛡️ BONUS: Comprehensive Security Layer (ÜBER ERWARTUNGEN)
+- [x] **Path Traversal Prevention** - Filename-Sanitization mit basename extraction
+- [x] **Information Disclosure Prevention** - Generische Fehlermeldungen, keine Systeminformationen
+- [x] **Secure Temporary Files** - Kryptographisch sichere Namen, 0600 permissions, garantiertes Cleanup
+- [x] **Audio Content Validation** - Magic Number-Prüfung für echte Audio-Dateien
+- [x] **Production-Ready Architecture** - Docker + Caddy optimiert
+- [x] **Comprehensive Error Handling** - Strukturierte Exception-Behandlung
+
+#### ⚠️ Whisper Integration vervollständigen (NÄCHSTER SCHRITT)
+- [ ] **openai-whisper Installation abschließen** - Torch-Dependencies (ca. 800MB) komplett installieren
+- [ ] **Echte Whisper-Transkription testen** - Von main_simple.py zu main.py wechseln
+- [ ] **Audio-Modell-Performance** - base/small Model für Development testen
+- [ ] **Whisper Service produktiv** - Echte Audio-Files erfolgreich transkribieren
+
+#### ❌ Backend Audio-Endpoint Integration (TODO)
+- [ ] **`/api/v1/notes/format-audio` Endpoint** implementieren
+- [ ] **MultipartFile Audio-Upload Support** im Spring Boot Backend
+- [ ] **JWT-Authentifizierung** für Audio-Endpoint
+- [ ] **WhisperServiceClient** - HTTP-Client für Service-Kommunikation
+- [ ] **Audio-File-Validation** (Größe max 25MB, Formate: .mp3, .wav, .webm)
+- [ ] **Transcript-Integration** in bestehende NoteService-Pipeline
+- [ ] **Transcript-Entity-Erstellung** für Audio-Input
+- [ ] **Error-Handling und Timeout-Management** für Service-Calls
+
+#### ❌ Integration & Testing (FINALE PHASE)
+- [ ] **Service-zu-Service-Kommunikation** Backend → Whisper getestet
+- [ ] **End-to-End cURL-Test** - Audio-Upload → Whisper → SOAP → Database
+- [ ] **Verschiedene Audio-Formate** getestet (.mp3, .wav, .webm, .m4a, .ogg, .flac)
+- [ ] **Performance-Test** mit großen Audio-Files (bis 25 MB)
+- [ ] **Error-Recovery** bei Whisper Service-Ausfällen
+- [ ] **Regression-Test** - Bestehender `/format` Endpoint weiterhin funktionsfähig
+- [ ] **Security-Penetration-Tests** - Path Traversal, Invalid Files, etc.
+
+#### Implementierungsdetails
+
+**Backend Audio-Endpoint Beispiel:**
+```java
+@PostMapping("/notes/format-audio")
+public ResponseEntity<NoteResponse> formatAudio(
+    @RequestParam("audio") MultipartFile audioFile,
+    @AuthenticationPrincipal Jwt jwt) {
+    
+    String userId = (jwt != null) ? jwt.getSubject() : "test-user";
+    
+    // 1. Audio-Validation
+    validateAudioFile(audioFile);
+    
+    // 2. Whisper Service Call
+    String transcript = whisperService.transcribe(audioFile);
+    
+    // 3. Existing SOAP-Pipeline
+    NoteRequest request = new NoteRequest();
+    request.setTextRaw(transcript);
+    
+    return formatNote(jwt, request);
+}
+```
+
+**Whisper Service Beispiel:**
+```python
+from fastapi import FastAPI, UploadFile
+import whisper
+
+app = FastAPI()
+model = whisper.load_model("base")
+
+@app.post("/transcribe")
+async def transcribe_audio(file: UploadFile):
+    # Audio-Processing
+    audio_bytes = await file.read()
+    
+    # Whisper-Transkription
+    result = model.transcribe(audio_bytes)
+    
+    return {"transcript": result["text"]}
+```
+
+**WhisperService Integration:**
+```java
+@Service
+public class WhisperService {
+    
+    @Value("${whisper.service.url:http://localhost:8002}")
+    private String whisperServiceUrl;
+    
+    public String transcribe(MultipartFile audioFile) {
+        // HTTP-Client zu Whisper Service
+        // Audio-File-Upload
+        // Response-Processing
+    }
+}
+```
+
+**Meilenstein Phase 5-B:** ⚠️ **TEILWEISE ERREICHT** - Sichere Whisper Service Foundation implementiert mit umfassender Security-Layer. Mock-Service funktioniert vollständig. Nächste Schritte: Whisper-Installation abschließen und Backend-Integration implementieren.
+
+**🎯 Aktueller Status (Juli 2025):**
+- ✅ **Whisper Service Foundation** - Produktionsreife FastAPI-Architektur
+- ✅ **Security-Layer** - Deutlich über Erwartungen (Path Traversal, Magic Numbers, etc.)
+- ✅ **Mock Implementation** - Vollständig testbare API
+- ⚠️ **Whisper Integration** - Installation unterbrochen, Mock funktioniert
+- ❌ **Backend Integration** - Ausstehend
+- ❌ **End-to-End Tests** - Ausstehend
+
+**🚀 Nächste prioritäre Schritte:**
+1. openai-whisper Installation vervollständigen (Torch-Dependencies)
+2. Echte Whisper-Transkription testen
+3. Spring Boot `/format-audio` Endpoint implementieren
+4. End-to-End Audio-zu-SOAP-Pipeline testen
+
+## Phase 5-C: n8n Audio-Workflow & User-Testing {#phase-5-c-n8n-audio-workflow-user-testing}
+
+**Ziel:** User-Testing der vollständigen Audio-Pipeline über erweiterten n8n-Workflow. Nutzung des Backend Audio-Endpoints für sichere, konsistente Audio-Verarbeitung.
+
+**Architektur-Grundsatz:** Audio-Upload an Backend (nicht direkt an Whisper):
+```
+n8n Audio-Upload → Backend (/format-audio) → Whisper → Backend → SOAP → n8n Response
+```
+
+**Wichtige Aufgaben:**
+
+- **n8n-Workflow erweitern**: Audio-Upload-Node für Backend-Integration
+- **User-Testing**: Audio-zu-SOAP über n8n Chat-Interface
+- **Performance-Testing**: Große Audio-Files und Concurrent Users
+- **Error-Handling-Testing**: Robustheit der Audio-Pipeline
+- **Regression-Testing**: Bestehende Text-Pipeline weiterhin funktionsfähig
+
+### Checkliste Phase 5-C
+
+#### n8n-Workflow-Erweiterung
+- [ ] Neuer n8n-Workflow für Audio-Upload erstellt oder bestehender erweitert
+- [ ] HTTP Request Node für Backend `/format-audio` Endpoint konfiguriert
+- [ ] FormData Audio-Upload an Backend (nicht an Whisper Service direkt)
+- [ ] JWT-Authentifizierung für Audio-Upload-Requests
+- [ ] Beide Input-Modi verfügbar: Text-Input UND Audio-Upload
+- [ ] Workflow-Documentation für Audio-Pipeline aktualisiert
+
+#### User-Testing über n8n
+- [ ] Chat-Interface-Testing mit verschiedenen Audio-Formaten
+- [ ] Audio-File-Upload über n8n Chat-Trigger getestet
+- [ ] End-to-End-Test: Audio-Upload → Backend → Whisper → SOAP → Chat-Output
+- [ ] User-Experience-Testing für Audio-Processing-Zeit
+- [ ] Error-Message-Testing bei ungültigen Audio-Files
+- [ ] Audio-Quality-Testing (verschiedene Aufnahmequalitäten)
+
+#### Performance & Stress-Testing
+- [ ] Große Audio-Files (bis 25 MB) über n8n getestet
+- [ ] Concurrent Audio-Upload-Testing (multiple simultaneous users)
+- [ ] Audio-Processing-Timeout-Testing und Recovery
+- [ ] Memory-Usage-Monitoring bei Audio-Verarbeitung
+- [ ] Network-Latency-Testing für Audio-Upload
+
+#### Error-Handling & Robustheit
+- [ ] Whisper Service Down: Graceful Error-Handling über n8n
+- [ ] Backend Timeout: Appropriate Error-Messages in Chat
+- [ ] Korrupte Audio-Files: Validation Error-Handling
+- [ ] Large File Rejection: User-friendly Error-Messages
+- [ ] Fallback-Mechanismus: Audio-Fehler → Text-Input-Aufforderung
+
+#### Regression-Testing
+- [ ] Bestehender Text-Input-Workflow weiterhin funktionsfähig
+- [ ] Keine Performance-Degradation für Text-Pipeline
+- [ ] Existing n8n-Credentials und -Configuration unverändert
+- [ ] Database-Integrity bei gemischten Text/Audio-Inputs
+
+**Meilenstein:** Nutzer können über n8n wahlweise Text eingeben ODER Audio-Dateien hochladen. Beide Wege führen zuverlässig zu strukturierten SOAP-Notizen. Audio-Pipeline ist performance-optimiert und robust gegen Fehler. 🎙️💬✅
+
+## Phase 6: Integration Testing -- n8n-basierte End-to-End-Tests {#phase-6-integration-testing}
+
+**Ziel:** Comprehensive Integration Testing aller Services über n8n-Workflow. Vollständige Validierung der Audio-zu-SOAP-Pipeline mit Session Management und Datenpersistierung.
+
+**Wichtige Aufgaben:**
+
+- End-to-End-Tests über n8n-Workflow durchführen
+- Session Management Integration testen
+- Datenpersistierung in Supabase validieren
+- Performance-Tests für Audio-Pipeline
+- Error-Handling für alle Services testen
 
 ### Checkliste Phase 6
-
-- [ ] FastAPI-Route /transcribe erstellt (POST, FormData oder UploadFile)
-- [ ] Whisper (openai-whisper) oder faster-whisper lokal installiert
-- [ ] Eingehende Audiodatei wird entgegengenommen, temporär gespeichert
-- [ ] Transkription durch Whisper-Modell durchgeführt und geprüft
-- [ ] JSON-Antwort im Format { "transcript": "..." } wird zurückgegeben
-- [ ] Fehlerhandling für ungültige/missing Dateien implementiert
-- [ ] Pipenv + requirements.txt oder Pipfile eingerichtet
-- [ ] Dockerfile für den Whisper-Service geschrieben
-- [ ] Funktion mit curl, Postman oder REST Client getestet
-- [ ] Verschiedene Audioformate getestet (mind. .mp3, .wav, optional .webm)
-
-**Meilenstein:** Whisper-Container ist lokal lauffähig und kann
-gesprochene Audiodateien zuverlässig in Text umwandeln. ✅
-
-## Phase 7: Frontend Audio-Integration -- Spracheingabe hinzufügen {#phase-7-frontend-audio-integration-spracheingabe-hinzufuegen}
-
-**Ziel:** Das bestehende Frontend um Audioaufnahme-Funktionalität erweitern. Integration des Whisper-Services für automatische Transkription.
-
-**Wichtige Aufgaben:**
-
-- MediaRecorder für Audioaufnahme implementieren
-- Audio-Upload an Whisper-Service integrieren
-- UI für Audio-Aufnahme erweitern
-- Fallback auf Text-Input beibehalten
-
-### Checkliste Phase 7
-
-- [ ] Audioaufnahme im Browser per MediaRecorder umgesetzt
-- [ ] Aufnahme wird als Blob gespeichert und an Whisper-Service gesendet
-- [ ] Backend Integration: Audio → Whisper → Text → SOAP Agent
-- [ ] UI erweitert um:
-  - [ ] Aufnahme-Button (zusätzlich zu Text-Input)
-  - [ ] Aufnahme-Status Anzeige
-  - [ ] Ladeanimation („Audio wird verarbeitet...")
-- [ ] Fehlerbehandlung bei Netzwerkfehlern, fehlender Mikrofonfreigabe etc.
-- [ ] Beide Input-Modi funktionieren: Text-Input UND Audio-Aufnahme
-- [ ] Verschiedene Audio-Formate getestet
-
-**Meilenstein:** Nutzer kann wahlweise Text eingeben ODER Audio aufnehmen. Beide Wege führen zu strukturierten SOAP-Notizen. 🎙️
-
-## Phase 8: Integration -- Frontend, Backend und KI-Agent verbinden {#phase-8-integration-frontend-backend-und-ki-agent-verbinden}
-
-**Ziel:** Zusammenspiel der Komponenten herstellen, sodass ein
-End-to-End-Prototyp entsteht. Vollständige Integration aller Services mit
-Datenpersistierung und SMTP-Konfiguration.
-
-**Wichtige Aufgaben:**
-
-- Vollständige Backend-Integration (Session/Transcript Management)
-- Datenpersistierung in Supabase implementieren
-- Ende-zu-Ende-Tests durchführen
-- SMTP-Dienst für E-Mail-Zustellung einrichten
-
-### Checkliste Phase 8
 
 - [ ] Session Management im Backend vollständig implementiert
 - [ ] Transcript wird korrekt in DB gespeichert und mit Session verknüpft
 - [ ] SOAP Note wird mit korrekten Foreign Keys persistiert
-- [ ] Gesamte Fluss getestet: User Authentifizierung → Input (Text/Audio) → Backend → KI → DB → Frontend UI
-- [ ] Fehlerbehandlung end-to-end: z. B. KI-Service down -- Backend fängt Exception ab
-- [ ] SMTP-Dienst für produktive E-Mail-Zustellung einrichten
-  - [ ] Anbieter ausgewählt (z. B. Mailgun, Postmark, Brevo)
-  - [ ] Zugangsdaten in Supabase Auth Settings eingetragen
-  - [ ] Absenderadresse konfiguriert (no-reply@...)
-  - [ ] SPF/DKIM/DMARC-DNS-Einträge gesetzt und geprüft
+- [ ] End-to-End-Test via n8n: Text-Input → Backend → KI → DB → Response
+- [ ] End-to-End-Test via n8n: Audio-Upload → Whisper → Backend → KI → DB → Response
+- [ ] Fehlerbehandlung getestet: Whisper Service down → Graceful Fallback
+- [ ] Fehlerbehandlung getestet: KI-Service down → Backend Exception Handling
+- [ ] Performance-Test: Große Audio-Dateien (5-10 MB) erfolgreich verarbeitet
+- [ ] Concurrent User Testing via n8n (multiple simultaneous workflows)
+- [ ] Database Integrity Tests (Foreign Key Constraints, Transactions)
 
-**Meilenstein:** *Der komplette Prototyp funktioniert lokal: Ein
-angemeldeter Nutzer kann Text oder Audio eingeben und erhält strukturierte
-SOAP-Notizen zurück, die korrekt in der Datenbank gespeichert werden.* 🚀
+**Meilenstein:** Der komplette Prototyp funktioniert robust über n8n: Nutzer können Text oder Audio eingeben und erhalten strukturierte SOAP-Notizen zurück, die korrekt in der Datenbank gespeichert werden. 🚀
 
-## Phase 9: Testing & Qualitätssicherung {#phase-9-testing-qualitätssicherung}
+## Phase 7: Frontend MVP -- Produktive Nutzeroberfläche {#phase-7-frontend-mvp-produktive-nutzeroberfläche}
+
+**Ziel:** Entwicklung einer produktiven Nutzeroberfläche mit Svelte, nachdem alle Backend-Services über n8n validiert wurden. Kann n8n-Workflow-Patterns als Referenz nutzen.
+
+**Wichtige Aufgaben:**
+
+- UI-Grundgerüst mit Svelte entwickeln
+- Text-Input und Audio-Upload implementieren
+- Backend-Integration basierend auf n8n-Erfahrungen
+- Responsive Design für mobile Nutzung
+- Authentication Flow mit Supabase
+
+### Checkliste Phase 7
+
+- [ ] Svelte-App Grundstruktur erstellt
+- [ ] Login-Komponente mit Supabase Auth (basierend auf n8n-Auth-Patterns)
+- [ ] Text-Input Feld für Transkript-Eingabe
+- [ ] Audio-Upload Komponente mit MediaRecorder
+- [ ] Submit-Button für beide Input-Modi
+- [ ] Backend-Integration (POST /api/notes/format) basierend auf n8n-Workflow
+- [ ] Audio-Backend-Integration (POST /api/notes/format-audio) für Audio-Upload
+- [ ] MediaRecorder für Browser-Audio-Aufnahme (basierend auf n8n-Testing)
+- [ ] JWT-Token Management im Authorization Header
+- [ ] Structured Response Display (SOAP-Notizen)
+- [ ] Responsive Design für Desktop und Mobile
+- [ ] Loading-States und Progress-Indikatoren
+- [ ] Comprehensive Error-Handling basierend auf n8n-Error-Patterns
+- [ ] Session-Management UI für Patientensitzungen
+- [ ] Offline-Support mit Service Worker (optional)
+
+**Meilenstein:** Produktive Webanwendung ermöglicht Ärzten direkten Zugang zu CuraSnap AI ohne n8n-Dependency. Alle Features aus n8n-Workflow verfügbar. 🖥️📱
+
+## Phase 8: Testing & Qualitätssicherung {#phase-8-testing-qualitätssicherung}
 
 **Ziel:** Einführung von Tests für die wichtigsten Komponenten, um als
 Einzelentwickler die Zuverlässigkeit sicherzustellen. Verwendung
@@ -318,22 +506,24 @@ kostenlos und etabliert.
 
 - Unit-Tests (Java) mit JUnit 5 und Mockito
 - Integrationstests (Java) mit Spring Boot Test
-- Python-Tests mit pytest
+- Python-Tests mit pytest (Backend und Whisper Service)
 - Frontend-Tests mit Vitest und Svelte Testing Library
-- Manuelles Testen und Edge-Cases
+- n8n-Workflow-Tests für Regression Testing
 
-### Checkliste Phase 9
+### Checkliste Phase 8
 
 - [ ] JUnit5 in Backend eingerichtet; mindestens ein Unit-Test (Service-Layer) und ein Controller-Test geschrieben
 - [ ] Mockito/MockBean genutzt, um externe Aufrufe (KI, DB) in Unit-Tests zu simulieren
-- [ ] Pytest eingerichtet; Beispieltest für FastAPI läuft (evtl. via pytest CLI oder VS Code Test Runner)
+- [ ] Pytest eingerichtet für Agent Service; Beispieltest für FastAPI läuft
+- [ ] Pytest eingerichtet für Whisper Service; Audio-Processing-Tests implementiert
 - [ ] Svelte/Vitest Setup durchgeführt (Testing-Library installiert); ein trivialer Komponententest erfolgreich
-- [ ] Cypress oder Playwright E2E-Test: Prototyp in Docker oder lokal gestartet und Testskript navigiert durch Login, Diktat, Ergebnisanzeige
-- [ ] Alle Tests in CI-Umgebung (z. B. GitHub Actions) konfiguriert, sodass bei jedem Push die Tests laufen
+- [ ] n8n-Workflow-Tests: Automated Testing der Audio-Pipeline über n8n API
+- [ ] Cypress oder Playwright E2E-Test: Frontend-Prototyp getestet
+- [ ] Alle Tests in CI-Umgebung (z. B. GitHub Actions) konfiguriert
 
 **Meilenstein:** Robuste Testabdeckung für kritische Komponenten gewährleistet Qualität und Stabilität.
 
-## Phase 10: Logging & Monitoring einbauen {#phase-10-logging-monitoring-einbauen}
+## Phase 9: Logging & Monitoring einbauen {#phase-9-logging-monitoring-einbauen}
 
 **Ziel:** Einführung von Logging in allen Teilen der Anwendung, um
 Debugging zu erleichtern und im Betrieb wichtige Events nachvollziehen
@@ -343,14 +533,16 @@ Komponente.
 **Wichtige Aufgaben:**
 
 - Backend-Logging (Java) mit SLF4J und Logback
-- KI-Service Logging (Python) mit Loguru
+- KI-Service und Whisper-Service Logging (Python) mit Loguru
 - Frontend-Logging mit Console-Logs und optional Sentry
-- Zentrales Logging Setup
+- n8n-Workflow-Logging für Debugging
 - Monitoring mit Health-Checks
 
-### Checkliste Phase 10
+### Checkliste Phase 9
 
 - [ ] Logging in allen Komponenten aktiviert: Spring Boot (Logback) konfiguriert, Python-Logging (oder Loguru) hinzugefügt, wichtige Client-Aktionen per console.log versehen
+- [ ] Whisper-Service Logging implementiert (Audio-Processing-Events)
+- [ ] n8n-Workflow-Execution-Logging für Debugging aktiviert
 - [ ] Sicherstellen, dass keine sensiblen Informationen in Logs gelangen (insbes. keine JWTs, keine Patientendetails)
 - [ ] Log-Level überprüft: Fehler als ERROR/WARN, normale Operationen als INFO, Detailabläufe (optional) als DEBUG
 - [ ] (Optional) Sentry oder ähnliches im Frontend eingebunden und mit einem Test-Error verifiziert
@@ -358,7 +550,7 @@ Komponente.
 
 **Meilenstein:** Comprehensive Logging ermöglicht effizientes Debugging und Monitoring.
 
-## Phase 11: Sicherheit & Best Practices umsetzen {#phase-11-sicherheit-best-practices-umsetzen}
+## Phase 10: Sicherheit & Best Practices umsetzen {#phase-10-sicherheit-best-practices-umsetzen}
 
 **Ziel:** Die Anwendung gegen häufige Sicherheitsrisiken schützen und
 bewährte Sicherheitspraktiken anwenden. Dies betrifft **API Keys**,
@@ -371,21 +563,22 @@ Header**.
 - JWT-Handhabung optimieren
 - Row-Level Security implementieren
 - Secure HTTP Headers konfigurieren
-- Abschirmung KI-Service
+- Abschirmung KI-Service und Whisper-Service
 - Debugging in Produktion deaktivieren
 
-### Checkliste Phase 11
+### Checkliste Phase 10
 
 - [ ] .env/Konfigurations-Dateien geprüft: alle API-Schlüssel, Passwörter, Secrets dort und nicht im Code
 - [ ] JWT-Einstellungen verifiziert: Ablaufzeit angemessen (Supabase default ~1h, okay), Tokens nur über HTTPS transportiert
 - [ ] Datenbank-RLS wirksam: manuelle Tests durchgeführt, ob unerlaubte Zugriffe geblockt werden
 - [ ] HTTP Security-Header geprüft (via Browser-Netzwerkanalyse oder Curl): HSTS, X-Frame-Options, CSP etc. vorhanden
-- [ ] KI-Agent ist intern abgesichert (z. B. Firewall oder Docker-Netz) -- keine öffentlichen Ports offen für diesen Container im Produktivbetrieb
+- [ ] KI-Agent und Whisper-Service intern abgesichert (z. B. Firewall oder Docker-Netz) -- keine öffentlichen Ports offen für diese Container im Produktivbetrieb
 - [ ] Debug/Verbose-Modi ausgeschaltet für Release (Logging auf INFO, keine sensiblen Infos im Output, keine Stacktraces nach außen)
+- [ ] Audio-File-Upload-Größenbegrenzung implementiert (Security gegen DoS-Attacken)
 
 **Meilenstein:** Anwendung entspricht Sicherheits-Best-Practices und ist produktionsreif.
 
-## Phase 12: Containerisierung & lokales Deployment aller Komponenten {#phase-12-containerisierung-lokales-deployment-aller-komponenten}
+## Phase 11: Containerisierung & lokales Deployment aller Komponenten {#phase-11-containerisierung-lokales-deployment-aller-komponenten}
 
 **Ziel:** Alle Komponenten dockerisieren und die Anwendung als Ganzes
 via Docker Compose starten. Dies erleichtert sowohl das produktionsnahe
@@ -394,26 +587,27 @@ Cloud-Inbetriebnahme.
 
 **Wichtige Aufgaben:**
 
-- Dockerfiles für alle Komponenten schreiben
-- Docker Compose Konfiguration erstellen
-- Caddy Reverse Proxy Setup
+- Dockerfiles für alle Komponenten schreiben (inkl. Whisper-Service)
+- Docker Compose Konfiguration erweitern
+- Caddy Reverse Proxy Setup für alle Services
 - Supabase-Anbindung konfigurieren
 - Test des gesamten Stacks
 
-### Checkliste Phase 12
+### Checkliste Phase 11
 
-- [ ] Dockerfiles für FE, BE, AI erstellt und Images bauen erfolgreich (docker build getestet)
+- [ ] Dockerfiles für FE, BE, AI, Whisper erstellt und Images bauen erfolgreich (docker build getestet)
 - [ ] docker-compose.yml konfiguriert: Services mit richtigen Ports/Abhängigkeiten; Caddy oder Nginx als Reverse Proxy inkludiert
-- [ ] Caddyfile für Routing hinterlegt und überprüft (lokal via HTTP funktionsfähig)
+- [ ] Whisper-Service Docker-Integration (Port 8002) mit Volume-Mounting für Audio-Files
+- [ ] Caddyfile für Routing aller Services hinterlegt und überprüft (lokal via HTTP funktionsfähig)
 - [ ] Compose-Stack gestartet: Alle Container „healthy" (Gesundheitschecks optional definieren)
-- [ ] End-to-End-Test über den Reverse Proxy bestanden
+- [ ] End-to-End-Test über den Reverse Proxy bestanden (Text und Audio)
 - [ ] Dokumentation: Docker-Anweisungen im README ergänzt, damit reproduzierbares Setup existiert
 
 **Meilenstein:** *Die gesamte Anwendung läuft containerisiert in einer
 lokalen Docker-Umgebung. Damit ist der Prototyp bereit für das
 Deployment in der Cloud.* 🐳
 
-## Phase 13: Deployment in der Cloud & CI/CD {#phase-13-deployment-in-der-cloud-cicd}
+## Phase 12: Deployment in der Cloud & CI/CD {#phase-12-deployment-in-der-cloud-cicd}
 
 **Ziel:** Die Anwendung auf einer echten Server-Umgebung (z. B. Hetzner
 Cloud VM) bereitstellen, mit öffentlicher Erreichbarkeit über HTTPS.
@@ -430,15 +624,16 @@ Solo-Entwickler zu automatisieren.
 - Überwachung & Betrieb
 - CI/CD Dokumentation
 
-### Checkliste Phase 13
+### Checkliste Phase 12
 
 - [ ] Hetzner VM erstellt, Docker installiert, Domain auf Server aufgeschaltet (DNS live)
 - [ ] Produktions-docker-compose.yml und Caddyfile auf Server übertragen und mit realer Domain konfiguriert
+- [ ] Whisper-Service Cloud-Performance getestet (GPU-Unterstützung falls verfügbar)
 - [ ] Erstes Deployment manuell durchgeführt: Container laufen auf VM, App über HTTPS erreichbar (Zertifikat von Let's Encrypt automatisch via Caddy)
-- [ ] CI-Pipeline eingerichtet: Build & Push aller Images beim Commit. Secrets in CI hinterlegt
+- [ ] CI-Pipeline eingerichtet: Build & Push aller Images (inkl. Whisper) beim Commit. Secrets in CI hinterlegt
 - [ ] Watchtower im Compose hinzugefügt und erfolgreich getestet: Push eines neuen Images führt zum Update auf Server
 - [ ] (Optional) Benachrichtigungen eingerichtet: z. B. Watchtower mit E-Mail bei Update, oder CI mit Slack/Webhook Meldung bei erfolgtem Deployment
-- [ ] Load-Test im kleinen Umfang, um zu sehen, ob alles stabil
+- [ ] Load-Test im kleinen Umfang, um zu sehen, ob alles stabil (inkl. Audio-Processing)
 
 **Meilenstein:** *Der CuraSnap AI Prototyp ist erfolgreich auf einem
 öffentlichen Server deployed, unter eigener Domain via HTTPS erreichbar
