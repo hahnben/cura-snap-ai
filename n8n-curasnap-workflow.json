@@ -1,0 +1,178 @@
+{
+  "name": "CuraSnap_Testing",
+  "nodes": [
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "textRaw",
+              "stringValue": "={{ $json.chatInput }}"
+            }
+          ]
+        },
+        "include": "none",
+        "options": {}
+      },
+      "id": "2b65203d-2e6b-40da-af32-4ecf01e96d3f",
+      "name": "Prepare Request Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        2840,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8080/api/v1/notes/format",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "textRaw",
+              "value": "={{ $json.textRaw }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cfa90906-8826-4a34-b6d8-2487c8ff168c",
+      "name": "Call Backend API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        3060,
+        -300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YvFf56cFvbQ4DpTj",
+          "name": "Header Auth account 2"
+        },
+        "httpBearerAuth": {
+          "id": "cQl1TMgqkvsSg2n7",
+          "name": "Bearer Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "text",
+              "stringValue": "={{ $json.textStructured }}"
+            }
+          ]
+        },
+        "include": "none",
+        "options": {}
+      },
+      "id": "eb1f8064-33fd-40ec-a420-afccb5ecfd1a",
+      "name": "Extract SOAP Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        3280,
+        -300
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        2620,
+        -300
+      ],
+      "id": "c3c0b7fa-3ba4-44ec-978b-e0712e575806",
+      "name": "When chat message received",
+      "webhookId": "9ba368b3-7dbe-4c39-882c-86fcb848b158"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Prepare Request Data": {
+      "main": [
+        [
+          {
+            "node": "Call Backend API",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Backend API": {
+      "main": [
+        [
+          {
+            "node": "Extract SOAP Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract SOAP Response": {
+      "main": [
+        []
+      ]
+    },
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Prepare Request Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "65605f39-ebf2-49da-982f-39d52ae08581",
+  "meta": {
+    "instanceId": "feb5bbe504086c4a5a662a3b5005e365a4a6c7c2420e308746e99560811447fc"
+  },
+  "id": "OjJ8UPj9lMmmF3gE",
+  "tags": [
+    {
+      "name": "ai",
+      "id": "EJ8Wn4qB4fap0XrW",
+      "createdAt": "2025-07-09T10:06:52.039Z",
+      "updatedAt": "2025-07-09T10:06:52.039Z"
+    },
+    {
+      "name": "testing",
+      "id": "YzfVvNfNO3Q7AmHe",
+      "createdAt": "2025-07-09T10:06:52.061Z",
+      "updatedAt": "2025-07-09T10:06:52.061Z"
+    },
+    {
+      "name": "medical",
+      "id": "fh6OHB5ThHhCGQBX",
+      "createdAt": "2025-07-09T10:06:52.019Z",
+      "updatedAt": "2025-07-09T10:06:52.019Z"
+    }
+  ]
+}

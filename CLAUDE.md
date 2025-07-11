@@ -142,6 +142,10 @@ Studiere die folgenden Dateien:
 ## MCP Configuration
 - Use mcp__context7 for every coding task
 
+## Git
+- Always create a new branch for a new feature, for refactoring or improvements
+- In commits always leave out the claude code acknowledgements
+
 ## Standard Workflow
 
 1. Denke zunächst über das Problem nach, schaue in der Codebasis nach relevanten Dateien und schreibe einen Plan in tasks/todo.md.
