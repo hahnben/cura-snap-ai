@@ -8,7 +8,7 @@ fastapi = "*"
 uvicorn = "*"
 python-multipart = "*"
 python-dotenv = "*"
-openai-whisper = "*"
+# openai-whisper = "*"  # Temporarily removed for faster testing
 
 [dev-packages]
 pytest = "*"

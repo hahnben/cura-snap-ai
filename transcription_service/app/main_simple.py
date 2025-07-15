@@ -18,11 +18,11 @@ from .security import (
 logging.basicConfig(level=getattr(logging, config.LOG_LEVEL))
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Whisper Service", version="1.0.0")
+app = FastAPI(title="Transcription Service (Mock)", version="1.0.0")
 
 @app.get("/")
 async def root():
-    return {"message": "Whisper Service is running"}
+    return {"message": "Transcription Service (Mock) is running"}
 
 @app.get("/health")
 async def health_check():

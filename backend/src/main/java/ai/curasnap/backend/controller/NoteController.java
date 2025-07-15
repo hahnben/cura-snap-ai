@@ -4,6 +4,8 @@ package ai.curasnap.backend.controller;
 import ai.curasnap.backend.model.dto.NoteRequest;
 import ai.curasnap.backend.model.dto.NoteResponse;
 import ai.curasnap.backend.service.NoteService;
+import ai.curasnap.backend.service.TranscriptionService;
+import ai.curasnap.backend.service.TranscriptionService.TranscriptionException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,6 +15,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -27,15 +30,18 @@ public class NoteController {
     private static final Logger logger = LoggerFactory.getLogger(NoteController.class);
 
     private final NoteService noteService;
+    private final TranscriptionService transcriptionService;
 
     /**
-     * Constructs a NoteController with injected NoteService.
+     * Constructs a NoteController with injected services.
      *
      * @param noteService the service used to handle note-related operations
+     * @param transcriptionService the service used to handle audio transcription
      */
     @Autowired
-    public NoteController(NoteService noteService) {
+    public NoteController(NoteService noteService, TranscriptionService transcriptionService) {
         this.noteService = noteService;
+        this.transcriptionService = transcriptionService;
     }
 
     /**
@@ -91,6 +97,50 @@ public class NoteController {
 
         NoteResponse response = noteService.formatNote(userId, request);
         return ResponseEntity.ok(response);
+    }
+
+    /**
+     * Formats an audio file into a structured medical note (e.g., SOAP format).
+     * The audio is first transcribed, then formatted by the AI agent.
+     *
+     * @param jwt the decoded JWT token containing user identity
+     * @param audioFile the uploaded audio file
+     * @return a ResponseEntity containing the formatted note
+     */
+    @PostMapping("/notes/format-audio")
+    public ResponseEntity<NoteResponse> formatAudio(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam("audio") MultipartFile audioFile
+    ) {
+        String userId = (jwt != null) ? jwt.getSubject() : "test-user";
+        logger.info("Received /notes/format-audio request from user: {}", userId);
+
+        // Basic input validation
+        if (audioFile == null || audioFile.isEmpty()) {
+            logger.warn("Invalid request received: empty or missing audio file");
+            return ResponseEntity.badRequest().build();
+        }
+
+        try {
+            // Transcribe audio to text
+            String transcript = transcriptionService.transcribe(audioFile);
+            logger.info("Audio transcribed successfully for user: {}", userId);
+
+            // Create NoteRequest with transcribed text
+            NoteRequest request = new NoteRequest();
+            request.setTextRaw(transcript);
+
+            // Use existing note formatting pipeline
+            NoteResponse response = noteService.formatNote(userId, request);
+            return ResponseEntity.ok(response);
+
+        } catch (TranscriptionException e) {
+            logger.error("Transcription failed for user {}: {}", userId, e.getMessage());
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            logger.error("Error processing audio file for user {}: {}", userId, e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     /**
