@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
+import java.io.InputStream;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.util.LinkedMultiValueMap;
@@ -15,9 +16,13 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import ai.curasnap.backend.util.SecurityUtils;
+
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
+import java.util.HashMap;
 
 /**
  * Client service for communicating with the Transcription Service.
@@ -33,6 +38,7 @@ public class TranscriptionService {
     private final RestTemplate restTemplate;
     private final String transcriptionServiceUrl;
     private final boolean transcriptionServiceEnabled;
+    private final int transcriptionServiceTimeout;
 
     // Maximum file size (25MB)
     private static final long MAX_FILE_SIZE = 25 * 1024 * 1024;
@@ -41,15 +47,33 @@ public class TranscriptionService {
     private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList(
         ".mp3", ".wav", ".webm", ".m4a", ".ogg", ".flac"
     );
+    
+    // Allowed MIME types for audio files
+    private static final List<String> ALLOWED_MIME_TYPES = Arrays.asList(
+        "audio/mpeg", "audio/mp3", "audio/wav", "audio/wave", "audio/x-wav",
+        "audio/webm", "audio/mp4", "audio/m4a", "audio/ogg", "audio/flac"
+    );
+    
+    // Magic number patterns for audio file validation
+    private static final Map<String, byte[]> AUDIO_MAGIC_NUMBERS = new HashMap<>();
+    static {
+        AUDIO_MAGIC_NUMBERS.put("mp3", new byte[]{(byte)0xFF, (byte)0xFB}); // MP3 frame header
+        AUDIO_MAGIC_NUMBERS.put("wav", new byte[]{0x52, 0x49, 0x46, 0x46}); // "RIFF"
+        AUDIO_MAGIC_NUMBERS.put("ogg", new byte[]{0x4F, 0x67, 0x67, 0x53}); // "OggS"
+        AUDIO_MAGIC_NUMBERS.put("flac", new byte[]{0x66, 0x4C, 0x61, 0x43}); // "fLaC"
+        AUDIO_MAGIC_NUMBERS.put("m4a", new byte[]{0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70}); // MP4 container
+    }
 
     @Autowired
     public TranscriptionService(
             RestTemplate restTemplate,
             @Value("${transcription.service.url:http://localhost:8002}") String transcriptionServiceUrl,
-            @Value("${transcription.service.enabled:true}") boolean transcriptionServiceEnabled) {
+            @Value("${transcription.service.enabled:true}") boolean transcriptionServiceEnabled,
+            @Value("${transcription.service.timeout:30000}") int transcriptionServiceTimeout) {
         this.restTemplate = restTemplate;
         this.transcriptionServiceUrl = transcriptionServiceUrl;
         this.transcriptionServiceEnabled = transcriptionServiceEnabled;
+        this.transcriptionServiceTimeout = transcriptionServiceTimeout;
     }
 
     /**
@@ -66,25 +90,20 @@ public class TranscriptionService {
         }
 
         try {
-            // Validate audio file
+            // Validate audio file (including MIME type and magic numbers)
             validateAudioFile(audioFile);
 
             String url = transcriptionServiceUrl + "/transcribe";
             
-            // Prepare multipart request
+            // Prepare multipart request with streaming (memory efficient)
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
-            body.add("file", new ByteArrayResource(audioFile.getBytes()) {
-                @Override
-                public String getFilename() {
-                    return audioFile.getOriginalFilename();
-                }
-            });
+            body.add("file", new StreamingByteArrayResource(audioFile));
             
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
             HttpEntity<MultiValueMap<String, Object>> entity = new HttpEntity<>(body, headers);
             
-            logger.debug("Sending audio file to Transcription Service at: {}", url);
+            logger.debug("Sending validated audio file to Transcription Service at: {}", url);
             ResponseEntity<TranscriptionResponse> response = restTemplate.postForEntity(url, entity, TranscriptionResponse.class);
             
             if (response.getBody() != null) {
@@ -100,8 +119,8 @@ public class TranscriptionService {
             logger.error("Failed to communicate with Transcription Service: {}", e.getMessage());
             throw new TranscriptionException("Failed to communicate with transcription service", e);
         } catch (IOException e) {
-            logger.error("Failed to read audio file: {}", e.getMessage());
-            throw new TranscriptionException("Failed to read audio file", e);
+            logger.error("Failed to process audio file: {}", e.getMessage());
+            throw new TranscriptionException("Failed to process audio file", e);
         }
     }
 
@@ -132,10 +151,34 @@ public class TranscriptionService {
 
         String extension = getFileExtension(originalFilename).toLowerCase();
         if (!ALLOWED_EXTENSIONS.contains(extension)) {
+            logger.warn("Unsupported file format uploaded: {}", 
+                SecurityUtils.sanitizeFilenameForLogging(originalFilename));
             throw new TranscriptionException(
                 String.format("Unsupported audio file format: %s (allowed: %s)", 
                     extension, String.join(", ", ALLOWED_EXTENSIONS))
             );
+        }
+        
+        // Validate MIME type
+        String contentType = audioFile.getContentType();
+        if (contentType == null || !ALLOWED_MIME_TYPES.contains(contentType.toLowerCase())) {
+            logger.warn("Invalid MIME type for audio file {}: {}", 
+                SecurityUtils.sanitizeFilenameForLogging(originalFilename), 
+                SecurityUtils.sanitizeForLogging(contentType));
+            throw new TranscriptionException(
+                String.format("Invalid MIME type: %s (allowed: %s)", 
+                    contentType, String.join(", ", ALLOWED_MIME_TYPES))
+            );
+        }
+        
+        // Validate file content using magic numbers (only reads header, not full file)
+        try {
+            validateAudioContentHeader(audioFile, extension);
+        } catch (IOException e) {
+            logger.error("Failed to validate audio file content for {}: {}", 
+                SecurityUtils.sanitizeFilenameForLogging(originalFilename), 
+                e.getMessage());
+            throw new TranscriptionException("Failed to validate audio file content", e);
         }
     }
 
@@ -148,6 +191,86 @@ public class TranscriptionService {
     private String getFileExtension(String filename) {
         int lastDotIndex = filename.lastIndexOf('.');
         return lastDotIndex > 0 ? filename.substring(lastDotIndex) : "";
+    }
+    
+    /**
+     * Validates audio file content using magic numbers (header-only validation).
+     * This method only reads the file header to validate format without loading the entire file.
+     * 
+     * @param audioFile the audio file to validate
+     * @param extension the file extension
+     * @throws IOException if file reading fails
+     * @throws TranscriptionException if content validation fails
+     */
+    private void validateAudioContentHeader(MultipartFile audioFile, String extension) throws IOException, TranscriptionException {
+        String extensionKey = extension.substring(1); // Remove the dot
+        byte[] magicNumbers = AUDIO_MAGIC_NUMBERS.get(extensionKey);
+        
+        if (magicNumbers == null) {
+            // For extensions without specific magic numbers (like .webm), skip magic number validation
+            logger.debug("No magic number validation available for extension: {}", extension);
+            return;
+        }
+        
+        // Read only the header bytes needed for validation (more memory efficient)
+        int headerSize = Math.max(magicNumbers.length, 32); // Ensure we read enough for WAV validation
+        byte[] fileHeader = new byte[headerSize];
+        
+        try (var inputStream = audioFile.getInputStream()) {
+            int bytesRead = inputStream.read(fileHeader);
+            if (bytesRead < magicNumbers.length) {
+                throw new TranscriptionException("Audio file too small to contain valid header");
+            }
+        }
+        
+        // Check for exact magic number match
+        boolean isValidAudio = false;
+        if (extensionKey.equals("mp3")) {
+            // MP3 can have different frame headers, check for common ones
+            isValidAudio = checkMp3MagicNumbers(fileHeader);
+        } else if (extensionKey.equals("wav")) {
+            // WAV files start with "RIFF" and contain "WAVE" at offset 8
+            isValidAudio = Arrays.equals(Arrays.copyOf(fileHeader, 4), magicNumbers) &&
+                          fileHeader.length > 11 &&
+                          fileHeader[8] == 0x57 && fileHeader[9] == 0x41 && // "WA"
+                          fileHeader[10] == 0x56 && fileHeader[11] == 0x45; // "VE"
+        } else {
+            // For other formats, check exact magic number match
+            isValidAudio = Arrays.equals(Arrays.copyOf(fileHeader, magicNumbers.length), magicNumbers);
+        }
+        
+        if (!isValidAudio) {
+            logger.warn("Invalid magic number for {} file: {}", 
+                extensionKey, 
+                SecurityUtils.sanitizeFilenameForLogging(audioFile.getOriginalFilename()));
+            throw new TranscriptionException("File content does not match expected audio format");
+        }
+    }
+    
+    /**
+     * Checks various MP3 magic number patterns.
+     * 
+     * @param fileHeader the file header bytes
+     * @return true if valid MP3 magic numbers are found
+     */
+    private boolean checkMp3MagicNumbers(byte[] fileHeader) {
+        if (fileHeader.length < 2) return false;
+        
+        // Common MP3 frame headers
+        byte[][] mp3Headers = {
+            {(byte)0xFF, (byte)0xFB}, // MPEG-1 Layer 3
+            {(byte)0xFF, (byte)0xF3}, // MPEG-2 Layer 3
+            {(byte)0xFF, (byte)0xF2}, // MPEG-2.5 Layer 3
+            {(byte)0x49, (byte)0x44, (byte)0x33} // ID3 tag "ID3"
+        };
+        
+        for (byte[] header : mp3Headers) {
+            if (fileHeader.length >= header.length && 
+                Arrays.equals(Arrays.copyOf(fileHeader, header.length), header)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -185,6 +308,39 @@ public class TranscriptionService {
 
         public TranscriptionException(String message, Throwable cause) {
             super(message, cause);
+        }
+    }
+    
+    /**
+     * Custom ByteArrayResource that streams from MultipartFile without loading entire file into memory.
+     * This prevents memory exhaustion with large audio files.
+     */
+    private static class StreamingByteArrayResource extends ByteArrayResource {
+        private final MultipartFile multipartFile;
+        
+        public StreamingByteArrayResource(MultipartFile multipartFile) throws IOException {
+            super(new byte[0]); // Empty array, we override getInputStream
+            this.multipartFile = multipartFile;
+        }
+        
+        @Override
+        public InputStream getInputStream() throws IOException {
+            return multipartFile.getInputStream();
+        }
+        
+        @Override
+        public String getFilename() {
+            return multipartFile.getOriginalFilename();
+        }
+        
+        @Override
+        public long contentLength() {
+            return multipartFile.getSize();
+        }
+        
+        @Override
+        public String getDescription() {
+            return "Streaming resource for file: " + SecurityUtils.sanitizeFilenameForLogging(multipartFile.getOriginalFilename());
         }
     }
 }

@@ -8,6 +8,7 @@ from .security import (
     sanitize_filename, 
     validate_file_extension, 
     validate_audio_content, 
+    detect_malware_patterns,
     get_generic_error_message,
     SecurityError,
     PathTraversalError,
@@ -59,11 +60,20 @@ async def transcribe_audio(file: UploadFile = File(...)) -> Dict[str, str]:
                 detail=get_generic_error_message('file_size')
             )
         
-        # Validate audio content using magic numbers (optional for mock)
+        # Validate audio content using magic numbers
         if not validate_audio_content(file_content, file_extension):
             logger.warning(f"Invalid audio content for file: {sanitized_filename}")
             # For mock service, we'll be more lenient
             logger.info("Mock service: allowing file despite invalid magic number")
+        
+        # Enhanced security: Check for malware patterns
+        is_suspicious, malware_reason = detect_malware_patterns(file_content)
+        if is_suspicious:
+            logger.error(f"Potential malware detected in file {sanitized_filename}: {malware_reason}")
+            raise HTTPException(
+                status_code=400, 
+                detail=get_generic_error_message('malware_detected')
+            )
         
         # Mock transcription result
         mock_transcript = f"Mock transcription for {sanitized_filename} - This is a test transcription."
@@ -76,7 +86,7 @@ async def transcribe_audio(file: UploadFile = File(...)) -> Dict[str, str]:
         
     except InvalidFileError as e:
         logger.error(f"Invalid file: {e}")
-        raise HTTPException(status_code=400, detail=get_generic_error_message('file_validation'))
+        raise HTTPException(status_code=400, detail=get_generic_error_message('invalid_extension'))
         
     except SecurityError as e:
         logger.error(f"Security error: {e}")
@@ -84,7 +94,7 @@ async def transcribe_audio(file: UploadFile = File(...)) -> Dict[str, str]:
         
     except Exception as e:
         logger.error(f"Mock transcription failed: {e}")
-        raise HTTPException(status_code=500, detail=get_generic_error_message('processing'))
+        raise HTTPException(status_code=500, detail=get_generic_error_message('server_error'))
 
 if __name__ == "__main__":
     import uvicorn
