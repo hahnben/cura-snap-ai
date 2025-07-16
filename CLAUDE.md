@@ -146,6 +146,18 @@ Studiere die folgenden Dateien:
 - Always create a new branch for a new feature, for refactoring or improvements
 - In commits always leave out the claude code acknowledgements
 
+## Troubleshooting
+
+### Eclipse Backend Start Issues
+- **Problem**: "Cannot load driver class: #{null}" beim Start
+- **Ursache**: application.properties mit `#{null}` Fallbacks verwirrt Spring Boot
+- **Lösung**: Nur `spring.datasource.url=${DATABASE_URL}` verwenden
+- **Eclipse Setup**: Folgende Umgebungsvariablen in Run Configuration setzen:
+  - `DATABASE_URL`: PostgreSQL connection string
+  - `SUPABASE_JWT_SECRET`: JWT secret für Authentication
+- **Hinweis**: PostgreSQL braucht nur die URL, alle anderen Parameter sind redundant
+- **Vermeiden**: Separate `DATABASE_DRIVER`, `DATABASE_USER`, `DATABASE_PASSWORD` Parameter
+
 ## Standard Workflow
 
 1. Denke zunächst über das Problem nach, schaue in der Codebasis nach relevanten Dateien und schreibe einen Plan in tasks/todo.md.
