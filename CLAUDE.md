@@ -58,6 +58,36 @@ pipenv run uvicorn app.main:app --reload --port 8001
 pipenv run pytest
 ```
 
+### Transcription Service (Python FastAPI)
+```bash
+# Navigate to transcription service directory
+cd transcription_service
+
+# Install dependencies with Pipenv
+pipenv install
+
+# Run development server
+pipenv run uvicorn app.main:app --reload --port 8002
+
+# Run tests
+pipenv run pytest
+```
+
+### WICHTIG: Lokale Entwicklung - Beide Services parallel starten
+```bash
+# Terminal 1: Agent Service (SOAP-Generierung)
+cd agent_service
+pipenv run uvicorn app.main:app --reload --port 8001
+
+# Terminal 2: Transcription Service (Audio-zu-Text)
+cd transcription_service
+pipenv run uvicorn app.main:app --reload --port 8002
+
+# Terminal 3: Backend (Spring Boot)
+cd backend
+./mvnw spring-boot:run
+```
+
 ### Docker Development
 ```bash
 # Start all services

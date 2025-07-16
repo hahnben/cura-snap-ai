@@ -21,7 +21,6 @@ model = OpenAIModel(
 agent = Agent(
     model=model,
     system_prompt="Du bist ein medizinischer Assistent. Erstelle eine strukturierte SOAP-Notiz.",
-    output_model=str,  # Expecting a single text block
     retries=1
 )
 
