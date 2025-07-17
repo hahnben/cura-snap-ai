@@ -422,17 +422,18 @@ n8n Audio-Upload → Backend (/format-audio) → Whisper → Backend → SOAP �
 ### Checkliste Phase 5-C
 
 #### n8n-Workflow-Erweiterung
-- [ ] Neuer n8n-Workflow für Audio-Upload erstellt oder bestehender erweitert
-- [ ] HTTP Request Node für Backend `/format-audio` Endpoint konfiguriert
-- [ ] FormData Audio-Upload an Backend (nicht an Whisper Service direkt)
-- [ ] JWT-Authentifizierung für Audio-Upload-Requests
-- [ ] Beide Input-Modi verfügbar: Text-Input UND Audio-Upload
-- [ ] Workflow-Documentation für Audio-Pipeline aktualisiert
+- [x] **Neuer n8n-Workflow für Audio-Upload erstellt oder bestehender erweitert** ✨
+- [x] **HTTP Request Node für Backend `/format-audio` Endpoint konfiguriert** ✨
+- [x] **FormData Audio-Upload an Backend (nicht an Whisper Service direkt)** ✨
+- [x] **JWT-Authentifizierung für Audio-Upload-Requests** ✨
+- [x] **Beide Input-Modi verfügbar: Text-Input UND Audio-Upload** ✨
+- [x] **Workflow-Documentation für Audio-Pipeline aktualisiert** ✨
 
 #### User-Testing über n8n
+- [x] **Audio-File-Upload über n8n (Read Files Node) getestet** ✨
+- [x] **End-to-End-Test: Audio-Upload → Backend → Whisper → SOAP → Database** ✨
+- [x] **Audio-Format-Testing (.ogg) erfolgreich** ✨
 - [ ] Chat-Interface-Testing mit verschiedenen Audio-Formaten
-- [ ] Audio-File-Upload über n8n Chat-Trigger getestet
-- [ ] End-to-End-Test: Audio-Upload → Backend → Whisper → SOAP → Chat-Output
 - [ ] User-Experience-Testing für Audio-Processing-Zeit
 - [ ] Error-Message-Testing bei ungültigen Audio-Files
 - [ ] Audio-Quality-Testing (verschiedene Aufnahmequalitäten)
@@ -457,7 +458,7 @@ n8n Audio-Upload → Backend (/format-audio) → Whisper → Backend → SOAP �
 - [ ] Existing n8n-Credentials und -Configuration unverändert
 - [ ] Database-Integrity bei gemischten Text/Audio-Inputs
 
-**Meilenstein:** Nutzer können über n8n wahlweise Text eingeben ODER Audio-Dateien hochladen. Beide Wege führen zuverlässig zu strukturierten SOAP-Notizen. Audio-Pipeline ist performance-optimiert und robust gegen Fehler. 🎙️💬✅
+**Meilenstein:** ✅ **TEILWEISE ERREICHT** - Audio-Upload-Funktionalität erfolgreich in n8n-Workflow integriert. End-to-End-Test Audio → Backend → Whisper → SOAP → Database funktioniert. Weitere Testing-Kategorien (Performance, Error-Handling) ausstehend. 🎙️💬✨
 
 ## Phase 6: Integration Testing -- n8n-basierte End-to-End-Tests {#phase-6-integration-testing}
 
