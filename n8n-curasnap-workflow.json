@@ -1,5 +1,5 @@
 {
-  "name": "CuraSnap_Testing",
+  "name": "My workflow",
   "nodes": [
     {
       "parameters": {
@@ -14,13 +14,13 @@
         "include": "none",
         "options": {}
       },
-      "id": "2b65203d-2e6b-40da-af32-4ecf01e96d3f",
+      "id": "8ddc661b-dd41-4d21-935f-d890e1356359",
       "name": "Prepare Request Data",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3,
       "position": [
-        2840,
-        -300
+        224,
+        0
       ]
     },
     {
@@ -29,15 +29,6 @@
         "url": "http://localhost:8080/api/v1/notes/format",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
-        "sendHeaders": true,
-        "headerParameters": {
-          "parameters": [
-            {
-              "name": "Content-Type",
-              "value": "application/json"
-            }
-          ]
-        },
         "sendBody": true,
         "bodyParameters": {
           "parameters": [
@@ -49,22 +40,18 @@
         },
         "options": {}
       },
-      "id": "cfa90906-8826-4a34-b6d8-2487c8ff168c",
+      "id": "7ce1a995-846e-4030-b13a-828978b5d6a0",
       "name": "Call Backend API",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4,
       "position": [
-        3060,
-        -300
+        448,
+        0
       ],
       "credentials": {
         "httpHeaderAuth": {
-          "id": "YvFf56cFvbQ4DpTj",
-          "name": "Header Auth account 2"
-        },
-        "httpBearerAuth": {
-          "id": "cQl1TMgqkvsSg2n7",
-          "name": "Bearer Auth account"
+          "id": "hlG6IGYTbXivBhxT",
+          "name": "Header Auth account"
         }
       }
     },
@@ -81,13 +68,13 @@
         "include": "none",
         "options": {}
       },
-      "id": "eb1f8064-33fd-40ec-a420-afccb5ecfd1a",
+      "id": "9ec744a4-3b2c-46cb-8215-a228be99f456",
       "name": "Extract SOAP Response",
       "type": "n8n-nodes-base.set",
       "typeVersion": 3,
       "position": [
-        3280,
-        -300
+        672,
+        0
       ]
     },
     {
@@ -97,12 +84,88 @@
       "type": "@n8n/n8n-nodes-langchain.chatTrigger",
       "typeVersion": 1.1,
       "position": [
-        2620,
-        -300
+        -48,
+        0
       ],
-      "id": "c3c0b7fa-3ba4-44ec-978b-e0712e575806",
+      "id": "d7682545-0f6f-4522-b69a-698ffc940020",
       "name": "When chat message received",
       "webhookId": "9ba368b3-7dbe-4c39-882c-86fcb848b158"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://localhost:8080/api/v1/notes/format-audio",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {}
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "audio",
+              "inputDataFieldName": "data"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b7f7b3ab-6946-4b7f-ab3b-7298b20e02cb",
+      "name": "Call Backend API1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [
+        224,
+        -208
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "hlG6IGYTbXivBhxT",
+          "name": "Header Auth account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fileSelector": "/home/ben/Desktop/Test-Audio/audio1.ogg",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.readWriteFile",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        -208
+      ],
+      "id": "f34a020f-d71d-400f-afb3-f18c084b4fce",
+      "name": "Read/Write Files from Disk"
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "text",
+              "stringValue": "={{ $json.textStructured }}"
+            }
+          ]
+        },
+        "include": "none",
+        "options": {}
+      },
+      "id": "0e06410d-d05c-47d6-a1f5-b778e896a74f",
+      "name": "Extract SOAP Response1",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3,
+      "position": [
+        448,
+        -208
+      ]
     }
   ],
   "pinData": {},
@@ -129,16 +192,33 @@
         ]
       ]
     },
-    "Extract SOAP Response": {
-      "main": [
-        []
-      ]
-    },
     "When chat message received": {
       "main": [
         [
           {
             "node": "Prepare Request Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call Backend API1": {
+      "main": [
+        [
+          {
+            "node": "Extract SOAP Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read/Write Files from Disk": {
+      "main": [
+        [
+          {
+            "node": "Call Backend API1",
             "type": "main",
             "index": 0
           }
@@ -150,29 +230,29 @@
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "65605f39-ebf2-49da-982f-39d52ae08581",
+  "versionId": "b95e1772-3f0e-46ad-aa13-fe615fc1f25d",
   "meta": {
-    "instanceId": "feb5bbe504086c4a5a662a3b5005e365a4a6c7c2420e308746e99560811447fc"
+    "instanceId": "4a9607c1162472f40742fe3705401d82381faa53abbb89bce44abbe278f74e13"
   },
-  "id": "OjJ8UPj9lMmmF3gE",
+  "id": "ON1ONghCwFBGHMGq",
   "tags": [
     {
-      "name": "ai",
-      "id": "EJ8Wn4qB4fap0XrW",
-      "createdAt": "2025-07-09T10:06:52.039Z",
-      "updatedAt": "2025-07-09T10:06:52.039Z"
+      "createdAt": "2025-07-16T14:54:33.589Z",
+      "updatedAt": "2025-07-16T14:54:33.589Z",
+      "id": "Ajq5kBAfWZ6djBsG",
+      "name": "testing"
     },
     {
-      "name": "testing",
-      "id": "YzfVvNfNO3Q7AmHe",
-      "createdAt": "2025-07-09T10:06:52.061Z",
-      "updatedAt": "2025-07-09T10:06:52.061Z"
+      "createdAt": "2025-07-16T14:54:33.594Z",
+      "updatedAt": "2025-07-16T14:54:33.594Z",
+      "id": "lPWwAsQq0go0VKKN",
+      "name": "medical"
     },
     {
-      "name": "medical",
-      "id": "fh6OHB5ThHhCGQBX",
-      "createdAt": "2025-07-09T10:06:52.019Z",
-      "updatedAt": "2025-07-09T10:06:52.019Z"
+      "createdAt": "2025-07-16T14:54:33.581Z",
+      "updatedAt": "2025-07-16T14:54:33.581Z",
+      "id": "qvAtby2QvOeqju4b",
+      "name": "ai"
     }
   ]
 }
