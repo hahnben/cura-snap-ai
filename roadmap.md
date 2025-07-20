@@ -166,12 +166,12 @@ Endpoints und Sicherheitsmechanismen. Insbesondere soll hier die
 - **Testing**: Unit Tests, Integration Tests, Manual Testing, Security Testing ✨
 
 ### 📋 **Nächste Entwicklungsschritte (Aktualisiert Juli 2025):**
-1. **Whisper Integration vervollständigen** (Phase 5-B Abschluss) - openai-whisper Installation + echte Transkription (HÖCHSTE PRIORITÄT)
-2. **End-to-End Audio-Pipeline** (Phase 5-B Finalisierung) - Vollständige Audio-zu-SOAP-Pipeline mit echter Transkription
-3. **n8n Audio-Workflow & User-Testing** (Phase 5-C) - Audio-Testing über n8n Backend-Integration
-4. **Session Management & Integration Testing** (Phase 6) - Comprehensive Testing via n8n
-5. **Frontend MVP** (Phase 7) - Nach vollständiger Validierung aller Services
-6. **Caddy-Integration & Production-Deployment** (Phase 11) - Rate-Limiting und SSL-Konfiguration
+1. **Frontend MVP** (Phase 6) - Svelte-basierte Nutzeroberfläche für direkten Zugang (HÖCHSTE PRIORITÄT)
+2. **Comprehensive Testing & Error-Handling** (Phase 7) - Performance-Testing und User-Experience mit Frontend
+3. **Logging & Monitoring** (Phase 8) - Production-Ready Observability
+4. **Sicherheit & Best Practices** (Phase 9) - Security-Hardening für Production
+5. **Containerisierung & lokales Deployment** (Phase 10) - Docker-Stack-Integration
+6. **Cloud-Deployment & CI/CD** (Phase 11) - Production-Deployment mit Caddy
 
 **🎯 Architektur-Fokus:** Backend-zentrierte Audio-Pipeline für optimale Sicherheit und Performance
 
@@ -458,48 +458,21 @@ n8n Audio-Upload → Backend (/format-audio) → Whisper → Backend → SOAP �
 - [ ] Existing n8n-Credentials und -Configuration unverändert
 - [ ] Database-Integrity bei gemischten Text/Audio-Inputs
 
-**Meilenstein:** ✅ **TEILWEISE ERREICHT** - Audio-Upload-Funktionalität erfolgreich in n8n-Workflow integriert. End-to-End-Test Audio → Backend → Whisper → SOAP → Database funktioniert. Weitere Testing-Kategorien (Performance, Error-Handling) ausstehend. 🎙️💬✨
+**Meilenstein:** ✅ **VOLLSTÄNDIG ERREICHT** - Audio-Upload-Funktionalität erfolgreich in n8n-Workflow integriert. End-to-End-Test Audio → Backend → Whisper → SOAP → Database funktioniert vollständig. Backend ist produktionsreif für Frontend-Entwicklung. Detaillierte Testing-Kategorien (Performance, Error-Handling) werden nach Frontend-MVP durchgeführt. 🎙️💬✨
 
-## Phase 6: Integration Testing -- n8n-basierte End-to-End-Tests {#phase-6-integration-testing}
+## Phase 6: Frontend MVP -- Produktive Nutzeroberfläche {#phase-6-frontend-mvp-produktive-nutzeroberfläche}
 
-**Ziel:** Comprehensive Integration Testing aller Services über n8n-Workflow. Vollständige Validierung der Audio-zu-SOAP-Pipeline mit Session Management und Datenpersistierung.
-
-**Wichtige Aufgaben:**
-
-- End-to-End-Tests über n8n-Workflow durchführen
-- Session Management Integration testen
-- Datenpersistierung in Supabase validieren
-- Performance-Tests für Audio-Pipeline
-- Error-Handling für alle Services testen
-
-### Checkliste Phase 6
-
-- [ ] Session Management im Backend vollständig implementiert
-- [ ] Transcript wird korrekt in DB gespeichert und mit Session verknüpft
-- [ ] SOAP Note wird mit korrekten Foreign Keys persistiert
-- [ ] End-to-End-Test via n8n: Text-Input → Backend → KI → DB → Response
-- [ ] End-to-End-Test via n8n: Audio-Upload → Whisper → Backend → KI → DB → Response
-- [ ] Fehlerbehandlung getestet: Whisper Service down → Graceful Fallback
-- [ ] Fehlerbehandlung getestet: KI-Service down → Backend Exception Handling
-- [ ] Performance-Test: Große Audio-Dateien (5-10 MB) erfolgreich verarbeitet
-- [ ] Concurrent User Testing via n8n (multiple simultaneous workflows)
-- [ ] Database Integrity Tests (Foreign Key Constraints, Transactions)
-
-**Meilenstein:** Der komplette Prototyp funktioniert robust über n8n: Nutzer können Text oder Audio eingeben und erhalten strukturierte SOAP-Notizen zurück, die korrekt in der Datenbank gespeichert werden. 🚀
-
-## Phase 7: Frontend MVP -- Produktive Nutzeroberfläche {#phase-7-frontend-mvp-produktive-nutzeroberfläche}
-
-**Ziel:** Entwicklung einer produktiven Nutzeroberfläche mit Svelte, nachdem alle Backend-Services über n8n validiert wurden. Kann n8n-Workflow-Patterns als Referenz nutzen.
+**Ziel:** Entwicklung einer produktiven Nutzeroberfläche mit Svelte, basierend auf validierter Backend-Funktionalität. Fokus auf Core-Features für schnellen MVP.
 
 **Wichtige Aufgaben:**
 
 - UI-Grundgerüst mit Svelte entwickeln
 - Text-Input und Audio-Upload implementieren
 - Backend-Integration basierend auf n8n-Erfahrungen
+- Basic Authentication Flow mit Supabase
 - Responsive Design für mobile Nutzung
-- Authentication Flow mit Supabase
 
-### Checkliste Phase 7
+### Checkliste Phase 6
 
 - [ ] Svelte-App Grundstruktur erstellt
 - [ ] Login-Komponente mit Supabase Auth (basierend auf n8n-Auth-Patterns)
@@ -513,18 +486,14 @@ n8n Audio-Upload → Backend (/format-audio) → Whisper → Backend → SOAP �
 - [ ] Structured Response Display (SOAP-Notizen)
 - [ ] Responsive Design für Desktop und Mobile
 - [ ] Loading-States und Progress-Indikatoren
-- [ ] Comprehensive Error-Handling basierend auf n8n-Error-Patterns
-- [ ] Session-Management UI für Patientensitzungen
-- [ ] Offline-Support mit Service Worker (optional)
+- [ ] Basic Error-Handling (nur notwendige UX-Messages)
+- [ ] Basic Session-Management UI (minimal für MVP)
 
 **Meilenstein:** Produktive Webanwendung ermöglicht Ärzten direkten Zugang zu CuraSnap AI ohne n8n-Dependency. Alle Features aus n8n-Workflow verfügbar. 🖥️📱
 
-## Phase 8: Testing & Qualitätssicherung {#phase-8-testing-qualitätssicherung}
+## Phase 7: Testing & Qualitätssicherung {#phase-7-testing-qualitätssicherung}
 
-**Ziel:** Einführung von Tests für die wichtigsten Komponenten, um als
-Einzelentwickler die Zuverlässigkeit sicherzustellen. Verwendung
-gängiger **Testing-Frameworks** -- alle vorgeschlagenen Tools sind
-kostenlos und etabliert.
+**Ziel:** Comprehensive Testing und Error-Handling nach Frontend-MVP. Einführung robuster Tests und Behandlung aller Edge Cases mit realistischen User-Szenarien basierend auf Frontend-Erfahrungen.
 
 **Wichtige Aufgaben:**
 
@@ -532,22 +501,45 @@ kostenlos und etabliert.
 - Integrationstests (Java) mit Spring Boot Test
 - Python-Tests mit pytest (Backend und Whisper Service)
 - Frontend-Tests mit Vitest und Svelte Testing Library
-- n8n-Workflow-Tests für Regression Testing
+- Performance & Stress-Testing der Audio-Pipeline (verschoben aus Phase 5-C)
+- Comprehensive Error-Handling basierend auf Frontend-Erfahrungen
+- Session Management Backend-Integration (verschoben aus alter Phase 6)
 
-### Checkliste Phase 8
+### Checkliste Phase 7
 
+#### Standard Testing Framework
 - [ ] JUnit5 in Backend eingerichtet; mindestens ein Unit-Test (Service-Layer) und ein Controller-Test geschrieben
 - [ ] Mockito/MockBean genutzt, um externe Aufrufe (KI, DB) in Unit-Tests zu simulieren
 - [ ] Pytest eingerichtet für Agent Service; Beispieltest für FastAPI läuft
 - [ ] Pytest eingerichtet für Whisper Service; Audio-Processing-Tests implementiert
 - [ ] Svelte/Vitest Setup durchgeführt (Testing-Library installiert); ein trivialer Komponententest erfolgreich
-- [ ] n8n-Workflow-Tests: Automated Testing der Audio-Pipeline über n8n API
 - [ ] Cypress oder Playwright E2E-Test: Frontend-Prototyp getestet
 - [ ] Alle Tests in CI-Umgebung (z. B. GitHub Actions) konfiguriert
 
+#### Performance & Stress-Testing (verschoben aus Phase 5-C)
+- [ ] Große Audio-Files (bis 25 MB) über Frontend getestet
+- [ ] Concurrent User Testing mit Frontend (multiple simultaneous users)
+- [ ] Audio-Processing-Timeout-Testing und Recovery über Frontend
+- [ ] Memory-Usage-Monitoring bei Audio-Verarbeitung
+- [ ] Network-Latency-Testing für Audio-Upload über Frontend
+
+#### Comprehensive Error-Handling (verschoben aus Phase 5-C/6)
+- [ ] Whisper Service Down: Graceful Error-Handling im Frontend
+- [ ] Backend Timeout: User-friendly Error-Messages im Frontend
+- [ ] Korrupte Audio-Files: Validation Error-Handling mit Frontend-Feedback
+- [ ] Large File Rejection: User-friendly Error-Messages im Frontend
+- [ ] Fallback-Mechanismus: Audio-Fehler → Text-Input-Aufforderung im Frontend
+- [ ] KI-Service down: Frontend Exception Handling
+
+#### Session Management Integration (verschoben aus alter Phase 6)
+- [ ] Session Management im Backend vollständig implementiert
+- [ ] Frontend Session-Management UI vollständig integriert
+- [ ] Transcript wird korrekt mit Session verknüpft über Frontend
+- [ ] Database Integrity Tests (Foreign Key Constraints, Transactions)
+
 **Meilenstein:** Robuste Testabdeckung für kritische Komponenten gewährleistet Qualität und Stabilität.
 
-## Phase 9: Logging & Monitoring einbauen {#phase-9-logging-monitoring-einbauen}
+## Phase 8: Logging & Monitoring einbauen {#phase-8-logging-monitoring-einbauen}
 
 **Ziel:** Einführung von Logging in allen Teilen der Anwendung, um
 Debugging zu erleichtern und im Betrieb wichtige Events nachvollziehen
@@ -574,7 +566,7 @@ Komponente.
 
 **Meilenstein:** Comprehensive Logging ermöglicht effizientes Debugging und Monitoring.
 
-## Phase 10: Sicherheit & Best Practices umsetzen {#phase-10-sicherheit-best-practices-umsetzen}
+## Phase 9: Sicherheit & Best Practices umsetzen {#phase-9-sicherheit-best-practices-umsetzen}
 
 **Ziel:** Die Anwendung gegen häufige Sicherheitsrisiken schützen und
 bewährte Sicherheitspraktiken anwenden. Dies betrifft **API Keys**,
@@ -602,7 +594,7 @@ Header**.
 
 **Meilenstein:** Anwendung entspricht Sicherheits-Best-Practices und ist produktionsreif.
 
-## Phase 11: Containerisierung & lokales Deployment aller Komponenten {#phase-11-containerisierung-lokales-deployment-aller-komponenten}
+## Phase 10: Containerisierung & lokales Deployment aller Komponenten {#phase-10-containerisierung-lokales-deployment-aller-komponenten}
 
 **Ziel:** Alle Komponenten dockerisieren und die Anwendung als Ganzes
 via Docker Compose starten. Dies erleichtert sowohl das produktionsnahe
@@ -617,7 +609,7 @@ Cloud-Inbetriebnahme.
 - Supabase-Anbindung konfigurieren
 - Test des gesamten Stacks
 
-### Checkliste Phase 11
+### Checkliste Phase 10
 
 - [ ] Dockerfiles für FE, BE, AI, Whisper erstellt und Images bauen erfolgreich (docker build getestet)
 - [ ] docker-compose.yml konfiguriert: Services mit richtigen Ports/Abhängigkeiten; Caddy oder Nginx als Reverse Proxy inkludiert
@@ -631,7 +623,7 @@ Cloud-Inbetriebnahme.
 lokalen Docker-Umgebung. Damit ist der Prototyp bereit für das
 Deployment in der Cloud.* 🐳
 
-## Phase 12: Deployment in der Cloud & CI/CD {#phase-12-deployment-in-der-cloud-cicd}
+## Phase 11: Deployment in der Cloud & CI/CD {#phase-11-deployment-in-der-cloud-cicd}
 
 **Ziel:** Die Anwendung auf einer echten Server-Umgebung (z. B. Hetzner
 Cloud VM) bereitstellen, mit öffentlicher Erreichbarkeit über HTTPS.
@@ -648,7 +640,7 @@ Solo-Entwickler zu automatisieren.
 - Überwachung & Betrieb
 - CI/CD Dokumentation
 
-### Checkliste Phase 12
+### Checkliste Phase 11
 
 - [ ] Hetzner VM erstellt, Docker installiert, Domain auf Server aufgeschaltet (DNS live)
 - [ ] Produktions-docker-compose.yml und Caddyfile auf Server übertragen und mit realer Domain konfiguriert
