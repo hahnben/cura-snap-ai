@@ -21,7 +21,7 @@ import com.fasterxml.jackson.annotation.JsonProperty;
  * It provides error handling and fallback mechanisms when the service is unavailable.
  */
 @Service
-public class AgentServiceClient {
+public class AgentServiceClient implements AgentServiceClientInterface {
 
     private static final Logger logger = LoggerFactory.getLogger(AgentServiceClient.class);
 

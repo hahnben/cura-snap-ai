@@ -33,18 +33,18 @@ public class NoteServiceImpl implements NoteService {
     private static final Logger logger = LoggerFactory.getLogger(NoteServiceImpl.class);
 
     private final SoapNoteRepository soapNoteRepository;
-    private final AgentServiceClient agentServiceClient;
+    private final AgentServiceClientInterface agentServiceClient;
     private final TranscriptService transcriptService;
 
     /**
      * Constructs the service with a reference to the SoapNoteRepository, AgentServiceClient, and TranscriptService.
      *
      * @param soapNoteRepository repository used for persisting structured SOAP notes
-     * @param agentServiceClient client for communicating with the Agent Service
+     * @param agentServiceClient client for communicating with the Agent Service (may be cached or direct)
      * @param transcriptService service for managing transcripts
      */
     @Autowired
-    public NoteServiceImpl(SoapNoteRepository soapNoteRepository, AgentServiceClient agentServiceClient, TranscriptService transcriptService) {
+    public NoteServiceImpl(SoapNoteRepository soapNoteRepository, AgentServiceClientInterface agentServiceClient, TranscriptService transcriptService) {
         this.soapNoteRepository = soapNoteRepository;
         this.agentServiceClient = agentServiceClient;
         this.transcriptService = transcriptService;
