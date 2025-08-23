@@ -3,6 +3,7 @@ package ai.curasnap.backend.controller;
 import ai.curasnap.backend.model.dto.*;
 import ai.curasnap.backend.service.JobService;
 import ai.curasnap.backend.service.TranscriptionService;
+import ai.curasnap.backend.service.WorkerHealthService;
 import ai.curasnap.backend.util.SecurityUtils;
 
 import lombok.extern.slf4j.Slf4j;
@@ -27,11 +28,15 @@ public class AsyncNoteController {
 
     private final JobService jobService;
     private final TranscriptionService transcriptionService;
+    private final WorkerHealthService workerHealthService;
 
     @Autowired
-    public AsyncNoteController(JobService jobService, TranscriptionService transcriptionService) {
+    public AsyncNoteController(JobService jobService, 
+                              TranscriptionService transcriptionService,
+                              WorkerHealthService workerHealthService) {
         this.jobService = jobService;
         this.transcriptionService = transcriptionService;
+        this.workerHealthService = workerHealthService;
     }
 
     /**
@@ -253,6 +258,61 @@ public class AsyncNoteController {
         health.put("transcriptionService", transcriptionAvailable ? "UP" : "DOWN");
         
         return ResponseEntity.ok(health);
+    }
+
+    /**
+     * Get comprehensive system health report
+     *
+     * @return ResponseEntity containing detailed system health
+     */
+    @GetMapping("/admin/health/system")
+    public ResponseEntity<WorkerHealthService.SystemHealthReport> getSystemHealth() {
+        try {
+            WorkerHealthService.SystemHealthReport report = workerHealthService.getSystemHealthReport();
+            return ResponseEntity.ok(report);
+            
+        } catch (Exception e) {
+            log.error("Failed to get system health report: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * Get active workers information
+     *
+     * @return ResponseEntity containing active workers list
+     */
+    @GetMapping("/admin/workers/active")
+    public ResponseEntity<List<WorkerHealthService.WorkerHealth>> getActiveWorkers() {
+        try {
+            List<WorkerHealthService.WorkerHealth> activeWorkers = workerHealthService.getActiveWorkers();
+            return ResponseEntity.ok(activeWorkers);
+            
+        } catch (Exception e) {
+            log.error("Failed to get active workers: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * Get specific worker health information
+     *
+     * @param workerId the worker ID to check
+     * @return ResponseEntity containing worker health data
+     */
+    @GetMapping("/admin/workers/{workerId}")
+    public ResponseEntity<WorkerHealthService.WorkerHealth> getWorkerHealth(
+            @PathVariable String workerId
+    ) {
+        try {
+            return workerHealthService.getWorkerHealth(workerId)
+                    .map(ResponseEntity::ok)
+                    .orElse(ResponseEntity.notFound().build());
+                    
+        } catch (Exception e) {
+            log.error("Failed to get worker health for {}: {}", workerId, e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
     }
 
     // Private helper methods

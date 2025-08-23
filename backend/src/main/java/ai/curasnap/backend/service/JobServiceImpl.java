@@ -11,12 +11,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.stream.Collectors;
+import java.util.Set;
 
 /**
  * Redis-based implementation of JobService
@@ -35,6 +37,9 @@ public class JobServiceImpl implements JobService {
     private static final String USER_JOBS_KEY_PREFIX = "user_jobs:";
     private static final String QUEUE_KEY_PREFIX = "queue:";
     private static final String JOB_EXPIRY_SET_KEY = "job_expiry_set";
+    private static final String DEAD_LETTER_QUEUE_PREFIX = "dlq:";
+    private static final String RETRY_SCHEDULE_KEY = "retry_schedule";
+    private static final String RETRY_STATS_KEY = "retry_stats";
 
     // Default values
     private static final Duration DEFAULT_JOB_EXPIRY = Duration.ofDays(1);
@@ -295,30 +300,70 @@ public class JobServiceImpl implements JobService {
 
     @Override
     public boolean incrementRetryCount(String jobId) {
+        return incrementRetryCountWithStrategy(jobId, null);
+    }
+
+    /**
+     * Enhanced retry with intelligent strategy and Dead Letter Queue support
+     *
+     * @param jobId the job ID to retry
+     * @param errorType the type of error that occurred (for adaptive retry strategy)
+     * @return true if retry scheduled, false if max retries exceeded and job moved to DLQ
+     */
+    public boolean incrementRetryCountWithStrategy(String jobId, String errorType) {
         try {
             JobData jobData = getJobData(jobId);
             if (jobData == null) {
+                log.warn("Cannot increment retry count - job {} not found", jobId);
                 return false;
             }
 
-            int newRetryCount = jobData.getRetryCount() + 1;
-            if (newRetryCount >= jobData.getMaxRetries()) {
-                // Max retries exceeded, mark as failed
-                return updateJobStatus(jobId, JobData.JobStatus.FAILED, null, 
-                        "Max retries (" + jobData.getMaxRetries() + ") exceeded");
+            // Get appropriate retry strategy for this job type
+            RetryStrategy.RetryConfig retryConfig = RetryStrategy.getRetryConfigForJobType(
+                    jobData.getJobType().getValue(), errorType);
+
+            // Calculate next retry attempt
+            RetryStrategy.RetryResult retryResult = RetryStrategy.calculateNextRetry(
+                    retryConfig, 
+                    jobData.getRetryCount(), 
+                    Instant.now(), 
+                    errorType);
+
+            if (!retryResult.isShouldRetry()) {
+                // Max retries exceeded - move to Dead Letter Queue
+                moveJobToDeadLetterQueue(jobData, retryResult.getReason());
+                recordRetryStats(jobData.getJobType().getValue(), jobData.getRetryCount(), false);
+                return false;
             }
 
+            // Schedule retry
+            int newRetryCount = jobData.getRetryCount() + 1;
             jobData.setRetryCount(newRetryCount);
-            jobData.setStatus(JobData.JobStatus.QUEUED); // Reset to queued for retry
+            jobData.setStatus(JobData.JobStatus.QUEUED);
+            
+            // Store retry metadata
+            Map<String, Object> retryMetadata = new HashMap<>();
+            retryMetadata.put("retryAttempt", newRetryCount);
+            retryMetadata.put("scheduledFor", retryResult.getNextRetryAt().toString());
+            retryMetadata.put("errorType", errorType);
+            retryMetadata.put("retryPolicy", retryConfig.getPolicy().name());
+            retryMetadata.put("delayMs", retryResult.getDelayUntilNextTry().toMillis());
+            jobData.getInputData().put("retryMetadata", retryMetadata);
 
+            // Update job data
             String jobKey = JOB_KEY_PREFIX + jobId;
             redisTemplate.opsForValue().set(jobKey, jobData, DEFAULT_JOB_EXPIRY);
 
-            // Add back to queue for retry
-            String queueKey = QUEUE_KEY_PREFIX + jobData.getQueueName();
-            redisTemplate.opsForList().rightPush(queueKey, jobId);
+            // Schedule delayed retry using Redis sorted set
+            scheduleDelayedRetry(jobId, retryResult.getNextRetryAt(), jobData.getQueueName());
+            
+            // Record retry statistics
+            recordRetryStats(jobData.getJobType().getValue(), newRetryCount, true);
 
-            log.info("Incremented retry count for job {} to {}/{}", jobId, newRetryCount, jobData.getMaxRetries());
+            log.info("Scheduled retry for job {} (attempt {}/{}): {} - next retry at {}", 
+                    jobId, newRetryCount, jobData.getMaxRetries(), retryResult.getReason(), 
+                    retryResult.getNextRetryAt());
+            
             return true;
 
         } catch (Exception e) {
@@ -453,5 +498,259 @@ public class JobServiceImpl implements JobService {
             default:
                 return "default";
         }
+    }
+
+    /**
+     * Move failed job to Dead Letter Queue for manual inspection
+     *
+     * @param jobData the job that exceeded max retries
+     * @param reason reason for moving to DLQ
+     */
+    private void moveJobToDeadLetterQueue(JobData jobData, String reason) {
+        try {
+            // Update job status to FAILED
+            jobData.setStatus(JobData.JobStatus.FAILED);
+            jobData.setCompletedAt(Instant.now());
+            jobData.setErrorMessage("Moved to Dead Letter Queue: " + reason);
+
+            // Save updated job data
+            String jobKey = JOB_KEY_PREFIX + jobData.getJobId();
+            redisTemplate.opsForValue().set(jobKey, jobData, Duration.ofDays(7)); // Keep DLQ jobs for 7 days
+
+            // Add to Dead Letter Queue
+            String dlqKey = DEAD_LETTER_QUEUE_PREFIX + jobData.getQueueName();
+            Map<String, Object> dlqEntry = new HashMap<>();
+            dlqEntry.put("jobId", jobData.getJobId());
+            dlqEntry.put("userId", jobData.getUserId());
+            dlqEntry.put("jobType", jobData.getJobType().getValue());
+            dlqEntry.put("failedAt", Instant.now().toString());
+            dlqEntry.put("retryAttempts", jobData.getRetryCount());
+            dlqEntry.put("reason", reason);
+            dlqEntry.put("originalError", jobData.getErrorMessage());
+
+            redisTemplate.opsForList().rightPush(dlqKey, dlqEntry);
+            
+            // Keep DLQ bounded (max 1000 entries per queue)
+            Long dlqSize = redisTemplate.opsForList().size(dlqKey);
+            if (dlqSize != null && dlqSize > 1000) {
+                redisTemplate.opsForList().trim(dlqKey, -1000, -1);
+            }
+
+            log.warn("Moved job {} to Dead Letter Queue {}: {}", 
+                    jobData.getJobId(), dlqKey, reason);
+
+        } catch (Exception e) {
+            log.error("Failed to move job {} to Dead Letter Queue: {}", 
+                    jobData.getJobId(), e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Schedule a delayed retry using Redis sorted set
+     *
+     * @param jobId the job to retry
+     * @param retryAt when to retry the job
+     * @param queueName the target queue name
+     */
+    private void scheduleDelayedRetry(String jobId, Instant retryAt, String queueName) {
+        try {
+            // Use Redis sorted set to schedule delayed retry
+            // Score is the timestamp when the job should be retried
+            double score = retryAt.toEpochMilli();
+            
+            Map<String, Object> retryEntry = new HashMap<>();
+            retryEntry.put("jobId", jobId);
+            retryEntry.put("queueName", queueName);
+            retryEntry.put("scheduledFor", retryAt.toString());
+
+            redisTemplate.opsForZSet().add(RETRY_SCHEDULE_KEY, retryEntry, score);
+            
+            log.debug("Scheduled delayed retry for job {} at {}", jobId, retryAt);
+
+        } catch (Exception e) {
+            log.error("Failed to schedule delayed retry for job {}: {}", jobId, e.getMessage(), e);
+            
+            // Fallback: add directly to queue (immediate retry)
+            String queueKey = QUEUE_KEY_PREFIX + queueName;
+            redisTemplate.opsForList().rightPush(queueKey, jobId);
+            log.info("Fallback: Added job {} directly to queue {} for immediate retry", jobId, queueName);
+        }
+    }
+
+    /**
+     * Process scheduled retries - called by background scheduler
+     * Moves jobs from retry schedule to actual queues when their time comes
+     */
+    @Scheduled(fixedDelay = 10000) // Every 10 seconds
+    public void processScheduledRetries() {
+        try {
+            double now = Instant.now().toEpochMilli();
+            
+            // Get all jobs scheduled for retry up to now
+            Set<Object> readyRetries = redisTemplate.opsForZSet().rangeByScore(RETRY_SCHEDULE_KEY, 0, now);
+            
+            if (readyRetries == null || readyRetries.isEmpty()) {
+                return;
+            }
+
+            int processedRetries = 0;
+            for (Object retryEntry : readyRetries) {
+                try {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> entry = (Map<String, Object>) retryEntry;
+                    String jobId = (String) entry.get("jobId");
+                    String queueName = (String) entry.get("queueName");
+
+                    // Move job to active queue
+                    String queueKey = QUEUE_KEY_PREFIX + queueName;
+                    redisTemplate.opsForList().rightPush(queueKey, jobId);
+                    
+                    // Remove from retry schedule
+                    redisTemplate.opsForZSet().remove(RETRY_SCHEDULE_KEY, retryEntry);
+                    
+                    processedRetries++;
+                    log.debug("Moved scheduled retry job {} to queue {}", jobId, queueName);
+
+                } catch (Exception e) {
+                    log.error("Failed to process scheduled retry: {}", e.getMessage());
+                }
+            }
+
+            if (processedRetries > 0) {
+                log.info("Processed {} scheduled retries", processedRetries);
+            }
+
+        } catch (Exception e) {
+            log.error("Error processing scheduled retries: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Record retry statistics for monitoring
+     *
+     * @param jobType the job type
+     * @param retryAttempt the retry attempt number
+     * @param success whether the retry was scheduled successfully
+     */
+    private void recordRetryStats(String jobType, int retryAttempt, boolean success) {
+        try {
+            String statsKey = RETRY_STATS_KEY + ":" + jobType;
+            
+            // Increment counters
+            redisTemplate.opsForHash().increment(statsKey, "totalRetries", 1);
+            if (success) {
+                redisTemplate.opsForHash().increment(statsKey, "successfulRetries", 1);
+            } else {
+                redisTemplate.opsForHash().increment(statsKey, "failedRetries", 1);
+            }
+            
+            // Track max retry attempt
+            Object currentMax = redisTemplate.opsForHash().get(statsKey, "maxRetryAttempt");
+            int currentMaxInt = currentMax instanceof Number ? ((Number) currentMax).intValue() : 0;
+            if (retryAttempt > currentMaxInt) {
+                redisTemplate.opsForHash().put(statsKey, "maxRetryAttempt", retryAttempt);
+            }
+
+            // Set expiry for stats (keep for 24 hours)
+            redisTemplate.expire(statsKey, Duration.ofHours(24));
+
+        } catch (Exception e) {
+            log.debug("Failed to record retry stats: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Get Dead Letter Queue entries for monitoring
+     *
+     * @param queueName the queue name
+     * @param limit maximum number of entries to return
+     * @return list of DLQ entries
+     */
+    public List<Map<String, Object>> getDeadLetterQueueEntries(String queueName, Integer limit) {
+        try {
+            String dlqKey = DEAD_LETTER_QUEUE_PREFIX + queueName;
+            int limitValue = limit != null ? limit : 50;
+            
+            List<Object> entries = redisTemplate.opsForList().range(dlqKey, -limitValue, -1);
+            if (entries == null) {
+                return Collections.emptyList();
+            }
+
+            return entries.stream()
+                    .filter(entry -> entry instanceof Map)
+                    .map(entry -> (Map<String, Object>) entry)
+                    .collect(Collectors.toList());
+
+        } catch (Exception e) {
+            log.error("Failed to get DLQ entries for queue {}: {}", queueName, e.getMessage());
+            return Collections.emptyList();
+        }
+    }
+
+    /**
+     * Get retry statistics for monitoring
+     *
+     * @param jobType the job type (optional)
+     * @return retry statistics
+     */
+    public Map<String, Object> getRetryStats(String jobType) {
+        try {
+            if (jobType != null) {
+                String statsKey = RETRY_STATS_KEY + ":" + jobType;
+                Map<Object, Object> stats = redisTemplate.opsForHash().entries(statsKey);
+                return stats.entrySet().stream()
+                        .collect(Collectors.toMap(
+                                e -> e.getKey().toString(),
+                                Map.Entry::getValue
+                        ));
+            } else {
+                // Get aggregate stats for all job types
+                Map<String, Object> aggregateStats = new HashMap<>();
+                Set<String> keys = redisTemplate.keys(RETRY_STATS_KEY + ":*");
+                
+                long totalRetries = 0;
+                long successfulRetries = 0;
+                long failedRetries = 0;
+                int maxRetryAttempt = 0;
+
+                if (keys != null) {
+                    for (String key : keys) {
+                        Map<Object, Object> stats = redisTemplate.opsForHash().entries(key);
+                        totalRetries += getLongFromHashMap(stats, "totalRetries");
+                        successfulRetries += getLongFromHashMap(stats, "successfulRetries");
+                        failedRetries += getLongFromHashMap(stats, "failedRetries");
+                        maxRetryAttempt = Math.max(maxRetryAttempt, getIntFromHashMap(stats, "maxRetryAttempt"));
+                    }
+                }
+
+                aggregateStats.put("totalRetries", totalRetries);
+                aggregateStats.put("successfulRetries", successfulRetries);
+                aggregateStats.put("failedRetries", failedRetries);
+                aggregateStats.put("maxRetryAttempt", maxRetryAttempt);
+                aggregateStats.put("successRate", totalRetries > 0 ? (double) successfulRetries / totalRetries : 0.0);
+
+                return aggregateStats;
+            }
+
+        } catch (Exception e) {
+            log.error("Failed to get retry stats for {}: {}", jobType, e.getMessage());
+            return Collections.emptyMap();
+        }
+    }
+
+    private long getLongFromHashMap(Map<Object, Object> map, String key) {
+        Object value = map.get(key);
+        if (value instanceof Number) {
+            return ((Number) value).longValue();
+        }
+        return 0L;
+    }
+
+    private int getIntFromHashMap(Map<Object, Object> map, String key) {
+        Object value = map.get(key);
+        if (value instanceof Number) {
+            return ((Number) value).intValue();
+        }
+        return 0;
     }
 }

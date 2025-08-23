@@ -3,13 +3,7 @@ package ai.curasnap.backend.service;
 import ai.curasnap.backend.model.dto.JobData;
 import ai.curasnap.backend.model.dto.NoteRequest;
 import ai.curasnap.backend.model.dto.NoteResponse;
-
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.ByteArrayInputStream;
@@ -18,80 +12,83 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Base64;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
- * Background worker for processing audio jobs
- * Polls the audio_processing queue and processes jobs asynchronously
+ * Managed worker instance for processing audio jobs in a worker pool
+ * Handles job processing with health monitoring and error recovery
  */
 @Slf4j
-@Service
-@ConditionalOnProperty(name = "app.audio.worker.enabled", havingValue = "true", matchIfMissing = true)
-public class AudioJobWorker {
+public class ManagedAudioWorker {
 
+    private final String workerId;
     private final JobService jobService;
     private final TranscriptionService transcriptionService;
     private final NoteService noteService;
     private final WorkerHealthService workerHealthService;
 
-    // Worker identification
-    private final String workerId;
-    private final String workerType = "audio_processing";
+    // Worker state management
+    private final AtomicBoolean isRunning = new AtomicBoolean(true);
+    private final AtomicBoolean isFailed = new AtomicBoolean(false);
+    private ScheduledFuture<?> workerTask;
 
-    // Processing statistics
-    private volatile long totalJobsProcessed = 0;
-    private volatile long totalJobsFailed = 0;
+    // Statistics
+    private final AtomicLong totalJobsProcessed = new AtomicLong(0);
+    private final AtomicLong totalJobsFailed = new AtomicLong(0);
     private volatile Instant lastProcessingTime = Instant.now();
+    private volatile Instant lastSuccessfulJob = null;
 
-    @Autowired
-    public AudioJobWorker(JobService jobService, 
-                         TranscriptionService transcriptionService,
-                         NoteService noteService,
-                         WorkerHealthService workerHealthService) {
+    // Error tracking
+    private volatile int consecutiveFailures = 0;
+    private static final int MAX_CONSECUTIVE_FAILURES = 5;
+
+    public ManagedAudioWorker(String workerId,
+                             JobService jobService,
+                             TranscriptionService transcriptionService,
+                             NoteService noteService,
+                             WorkerHealthService workerHealthService) {
+        this.workerId = workerId;
         this.jobService = jobService;
         this.transcriptionService = transcriptionService;
         this.noteService = noteService;
         this.workerHealthService = workerHealthService;
-        
-        // Generate unique worker ID
-        this.workerId = "audio-worker-" + System.currentTimeMillis() + "-" + 
-                       Integer.toHexString(System.identityHashCode(this));
-        
+
         // Register with health service
-        workerHealthService.registerWorker(workerId, workerType);
-        
-        log.info("AudioJobWorker initialized with ID: {}", workerId);
+        workerHealthService.registerWorker(workerId, "audio_processing");
+        log.info("ManagedAudioWorker {} initialized", workerId);
     }
 
     /**
-     * Scheduled method to process audio jobs from the queue
-     * Runs every 5 seconds to check for new jobs
+     * Main job processing method called by scheduler
      */
-    @Scheduled(fixedDelay = 5000) // 5 seconds
-    public void processAudioJobs() {
+    public void processJobs() {
+        if (!isRunning.get() || isFailed.get()) {
+            return;
+        }
+
         try {
-            // Update worker heartbeat
+            // Update heartbeat
             workerHealthService.updateWorkerHeartbeat(workerId);
-            
+            lastProcessingTime = Instant.now();
+
+            // Get next job from queue
             Optional<JobData> nextJob = jobService.getNextJobFromQueue("audio_processing");
             
             if (nextJob.isPresent()) {
                 processAudioJob(nextJob.get());
+                resetFailureCounter();
             }
-            
+
         } catch (Exception e) {
-            log.error("Error in audio job worker {}: {}", workerId, e.getMessage(), e);
+            handleWorkerError(e);
         }
     }
 
     /**
      * Process a single audio job
-     * Converts audio to text, then generates SOAP note
-     *
-     * @param jobData the job to process
      */
     private void processAudioJob(JobData jobData) {
         String jobId = jobData.getJobId();
@@ -103,26 +100,24 @@ public class AudioJobWorker {
         try {
             // Mark job as started
             if (!jobService.markJobAsStarted(jobId)) {
-                log.warn("Failed to mark job {} as started, skipping", jobId);
+                log.warn("Worker {} - Failed to mark job {} as started, skipping", workerId, jobId);
                 return;
             }
-
-            lastProcessingTime = jobStartTime;
 
             // Extract audio data from job
             MultipartFile audioFile = createMultipartFileFromJobData(jobData);
             
             // Step 1: Transcribe audio to text
-            log.debug("Starting transcription for job {}", jobId);
+            log.debug("Worker {} - Starting transcription for job {}", workerId, jobId);
             String transcript = transcriptionService.transcribe(audioFile);
             
             if (transcript == null || transcript.trim().isEmpty()) {
-                failJob(jobId, "Transcription returned empty result");
+                failJob(jobId, "Transcription returned empty result", "transcription_empty");
                 return;
             }
             
-            log.debug("Transcription completed for job {}: {} characters", 
-                    jobId, transcript.length());
+            log.debug("Worker {} - Transcription completed for job {}: {} characters", 
+                    workerId, jobId, transcript.length());
 
             // Step 2: Create NoteRequest for SOAP generation
             NoteRequest noteRequest = new NoteRequest();
@@ -131,10 +126,10 @@ public class AudioJobWorker {
             noteRequest.setTranscriptId(jobData.getTranscriptId());
 
             // Step 3: Generate SOAP note
-            log.debug("Starting SOAP generation for job {}", jobId);
+            log.debug("Worker {} - Starting SOAP generation for job {}", workerId, jobId);
             NoteResponse noteResponse = noteService.formatNote(userId, noteRequest);
             
-            log.debug("SOAP generation completed for job {}", jobId);
+            log.debug("Worker {} - SOAP generation completed for job {}", workerId, jobId);
 
             // Step 4: Update job with results
             Map<String, Object> result = new HashMap<>();
@@ -146,7 +141,8 @@ public class AudioJobWorker {
             ));
             result.put("transcriptText", transcript);
             result.put("processingTimeMs", 
-                java.time.Duration.between(jobData.getCreatedAt(), Instant.now()).toMillis());
+                Duration.between(jobStartTime, Instant.now()).toMillis());
+            result.put("workerId", workerId);
 
             boolean updated = jobService.updateJobStatus(
                 jobId, 
@@ -156,8 +152,9 @@ public class AudioJobWorker {
             );
 
             if (updated) {
-                totalJobsProcessed++;
                 long processingTime = (Long) result.get("processingTimeMs");
+                totalJobsProcessed.incrementAndGet();
+                lastSuccessfulJob = Instant.now();
                 
                 // Record success metrics
                 workerHealthService.recordJobProcessing(workerId, true, processingTime);
@@ -165,42 +162,31 @@ public class AudioJobWorker {
                 log.info("Worker {} successfully completed audio job {} for user {} in {}ms", 
                         workerId, jobId, userId, processingTime);
             } else {
-                log.error("Failed to update job status for completed job {}", jobId);
+                log.error("Worker {} - Failed to update job status for completed job {}", workerId, jobId);
             }
 
         } catch (TranscriptionService.TranscriptionException e) {
             log.error("Worker {} - Transcription failed for job {}: {}", workerId, jobId, e.getMessage());
             long processingTime = Duration.between(jobStartTime, Instant.now()).toMillis();
             workerHealthService.recordJobProcessing(workerId, false, processingTime);
-            failJobWithErrorType(jobId, "Transcription failed: " + e.getMessage(), "transcription_error");
+            failJob(jobId, "Transcription failed: " + e.getMessage(), "transcription_error");
             
         } catch (Exception e) {
             log.error("Worker {} - Unexpected error processing audio job {}: {}", workerId, jobId, e.getMessage(), e);
             long processingTime = Duration.between(jobStartTime, Instant.now()).toMillis();
             workerHealthService.recordJobProcessing(workerId, false, processingTime);
-            failJobWithErrorType(jobId, "Processing failed: " + e.getMessage(), "unexpected_error");
+            failJob(jobId, "Processing failed: " + e.getMessage(), "unexpected_error");
         }
     }
 
     /**
-     * Mark job as failed and handle retry logic
-     *
-     * @param jobId the job ID
-     * @param errorMessage the error message
+     * Handle job failure with intelligent retry
      */
-    private void failJob(String jobId, String errorMessage) {
-        failJobWithErrorType(jobId, errorMessage, null);
-    }
-
-    /**
-     * Mark job as failed with specific error type for intelligent retry
-     *
-     * @param jobId the job ID
-     * @param errorMessage the error message
-     * @param errorType the type of error for retry strategy selection
-     */
-    private void failJobWithErrorType(String jobId, String errorMessage, String errorType) {
+    private void failJob(String jobId, String errorMessage, String errorType) {
         try {
+            totalJobsFailed.incrementAndGet();
+            incrementFailureCounter();
+            
             // Try to increment retry count with intelligent strategy
             boolean retryScheduled;
             if (jobService instanceof JobServiceImpl) {
@@ -219,11 +205,10 @@ public class AudioJobWorker {
                 );
                 
                 if (updated) {
-                    totalJobsFailed++;
                     log.error("Worker {} - Job {} permanently failed after max retries: {}", 
                             workerId, jobId, errorMessage);
                 } else {
-                    log.error("Failed to mark job {} as failed", jobId);
+                    log.error("Worker {} - Failed to mark job {} as failed", workerId, jobId);
                 }
             } else {
                 log.info("Worker {} - Job {} scheduled for retry due to: {}", 
@@ -231,15 +216,14 @@ public class AudioJobWorker {
             }
             
         } catch (Exception e) {
-            log.error("Error handling job failure for job {}: {}", jobId, e.getMessage(), e);
+            log.error("Worker {} - Error handling job failure for job {}: {}", 
+                    workerId, jobId, e.getMessage(), e);
+            incrementFailureCounter();
         }
     }
 
     /**
      * Create MultipartFile from job data for transcription service
-     *
-     * @param jobData the job containing audio data
-     * @return MultipartFile for transcription
      */
     private MultipartFile createMultipartFileFromJobData(JobData jobData) throws Exception {
         Map<String, Object> inputData = jobData.getInputData();
@@ -257,81 +241,79 @@ public class AudioJobWorker {
         byte[] audioBytes = Base64.getDecoder().decode(audioBase64);
         
         // Create custom MultipartFile implementation for transcription service
-        return new ByteArrayMultipartFile(
-            originalFileName,
-            contentType,
-            audioBytes
-        );
+        return new ByteArrayMultipartFile(originalFileName, contentType, audioBytes);
     }
 
     /**
-     * Get worker statistics for monitoring
-     *
-     * @return map containing worker statistics
+     * Handle worker-level errors
      */
-    public Map<String, Object> getWorkerStats() {
-        Map<String, Object> stats = new HashMap<>();
-        stats.put("workerId", workerId);
-        stats.put("workerType", workerType);
-        stats.put("totalJobsProcessed", totalJobsProcessed);
-        stats.put("totalJobsFailed", totalJobsFailed);
-        stats.put("lastProcessingTime", lastProcessingTime.toString());
-        stats.put("workerEnabled", true);
-        stats.put("queueName", "audio_processing");
+    private void handleWorkerError(Exception e) {
+        log.error("Worker {} encountered error: {}", workerId, e.getMessage(), e);
+        incrementFailureCounter();
         
-        // Success rate calculation
-        long totalJobs = totalJobsProcessed + totalJobsFailed;
-        double successRate = totalJobs > 0 ? (double) totalJobsProcessed / totalJobs : 1.0;
-        stats.put("successRate", successRate);
-        stats.put("totalJobsHandled", totalJobs);
-        
-        // Add transcription service availability
-        stats.put("transcriptionServiceAvailable", 
-                transcriptionService.isTranscriptionServiceAvailable());
-        
-        // Add uptime information
-        stats.put("uptimeSeconds", Duration.between(lastProcessingTime, Instant.now()).getSeconds());
-        
-        // Add health service data if available
-        workerHealthService.getWorkerHealth(workerId).ifPresent(health -> {
-            stats.put("healthStatus", health.getStatus().name());
-            stats.put("startTime", health.getStartTime().toString());
-            stats.put("lastHeartbeat", health.getLastHeartbeat().toString());
-            stats.put("healthProcessedJobs", health.getProcessedJobs());
-            stats.put("healthFailedJobs", health.getFailedJobs());
-        });
-        
-        return stats;
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            log.error("Worker {} failed {} consecutive times, marking as failed", 
+                    workerId, consecutiveFailures);
+            markAsFailed();
+        }
     }
 
     /**
-     * Manual trigger for processing jobs (useful for testing)
-     * 
-     * @return number of jobs processed
+     * Mark worker as failed
      */
-    public int processJobsManually() {
-        log.info("Manual job processing triggered");
-        int jobsProcessed = 0;
+    private void markAsFailed() {
+        isFailed.set(true);
+        isRunning.set(false);
+        workerHealthService.deactivateWorker(workerId);
+        log.error("Worker {} marked as failed", workerId);
+    }
+
+    /**
+     * Increment failure counter and check health threshold
+     */
+    private void incrementFailureCounter() {
+        consecutiveFailures++;
+        if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+            markAsFailed();
+        }
+    }
+
+    /**
+     * Reset failure counter on successful processing
+     */
+    private void resetFailureCounter() {
+        if (consecutiveFailures > 0) {
+            log.debug("Worker {} - Resetting failure counter after successful processing", workerId);
+            consecutiveFailures = 0;
+        }
+    }
+
+    /**
+     * Graceful shutdown
+     */
+    public void shutdown() {
+        log.info("Shutting down worker {}", workerId);
+        isRunning.set(false);
         
-        try {
-            // Process up to 10 jobs in manual mode
-            for (int i = 0; i < 10; i++) {
-                Optional<JobData> nextJob = jobService.getNextJobFromQueue("audio_processing");
-                
-                if (nextJob.isPresent()) {
-                    processAudioJob(nextJob.get());
-                    jobsProcessed++;
-                } else {
-                    break; // No more jobs in queue
-                }
-            }
-            
-        } catch (Exception e) {
-            log.error("Error in manual job processing: {}", e.getMessage(), e);
+        if (workerTask != null && !workerTask.isCancelled()) {
+            workerTask.cancel(false);
         }
         
-        log.info("Manual processing completed: {} jobs processed", jobsProcessed);
-        return jobsProcessed;
+        workerHealthService.deactivateWorker(workerId);
+    }
+
+    // Getters for monitoring
+    public String getWorkerId() { return workerId; }
+    public boolean isRunning() { return isRunning.get(); }
+    public boolean isFailed() { return isFailed.get(); }
+    public long getTotalJobsProcessed() { return totalJobsProcessed.get(); }
+    public long getTotalJobsFailed() { return totalJobsFailed.get(); }
+    public Instant getLastProcessingTime() { return lastProcessingTime; }
+    public Instant getLastSuccessfulJob() { return lastSuccessfulJob; }
+    public int getConsecutiveFailures() { return consecutiveFailures; }
+
+    public void setWorkerTask(ScheduledFuture<?> workerTask) {
+        this.workerTask = workerTask;
     }
 
     /**
@@ -349,34 +331,22 @@ public class AudioJobWorker {
         }
 
         @Override
-        public String getName() {
-            return "file";
-        }
+        public String getName() { return "file"; }
 
         @Override
-        public String getOriginalFilename() {
-            return originalFilename;
-        }
+        public String getOriginalFilename() { return originalFilename; }
 
         @Override
-        public String getContentType() {
-            return contentType;
-        }
+        public String getContentType() { return contentType; }
 
         @Override
-        public boolean isEmpty() {
-            return content.length == 0;
-        }
+        public boolean isEmpty() { return content.length == 0; }
 
         @Override
-        public long getSize() {
-            return content.length;
-        }
+        public long getSize() { return content.length; }
 
         @Override
-        public byte[] getBytes() throws IOException {
-            return content;
-        }
+        public byte[] getBytes() throws IOException { return content; }
 
         @Override
         public InputStream getInputStream() throws IOException {

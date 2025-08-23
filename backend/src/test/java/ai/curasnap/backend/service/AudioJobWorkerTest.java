@@ -33,11 +33,14 @@ class AudioJobWorkerTest {
     @Mock
     private NoteService noteService;
 
+    @Mock
+    private WorkerHealthService workerHealthService;
+
     private AudioJobWorker audioJobWorker;
 
     @BeforeEach
     void setUp() {
-        audioJobWorker = new AudioJobWorker(jobService, transcriptionService, noteService);
+        audioJobWorker = new AudioJobWorker(jobService, transcriptionService, noteService, workerHealthService);
     }
 
     @Test
