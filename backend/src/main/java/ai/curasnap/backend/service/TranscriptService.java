@@ -2,6 +2,7 @@ package ai.curasnap.backend.service;
 
 import ai.curasnap.backend.model.entity.Transcript;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -46,4 +47,33 @@ public interface TranscriptService {
      * @return a list of transcripts
      */
     List<Transcript> getTranscriptsBySessionAndUser(UUID sessionId, UUID userId);
+
+    /**
+     * Returns all transcripts for a user, ordered by creation date (newest first).
+     * Optimized for chronological display.
+     *
+     * @param userId the authenticated user's ID
+     * @return a list of transcripts, chronologically ordered
+     */
+    List<Transcript> getTranscriptsChronological(UUID userId);
+
+    /**
+     * Returns all transcripts for a user within a specific date range.
+     * Useful for generating reports or filtering by time period.
+     *
+     * @param userId the authenticated user's ID
+     * @param startDate the start of the date range (inclusive)
+     * @param endDate the end of the date range (inclusive)
+     * @return a list of transcripts within the date range
+     */
+    List<Transcript> getTranscriptsByDateRange(UUID userId, Instant startDate, Instant endDate);
+
+    /**
+     * Returns transcripts by input type for analytics purposes.
+     *
+     * @param userId the authenticated user's ID
+     * @param inputType the input type (e.g., "audio", "text")
+     * @return a list of transcripts of the specified type
+     */
+    List<Transcript> getTranscriptsByInputType(UUID userId, String inputType);
 }

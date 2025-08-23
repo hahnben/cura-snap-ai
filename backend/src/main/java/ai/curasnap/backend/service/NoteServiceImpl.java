@@ -148,4 +148,47 @@ public class NoteServiceImpl implements NoteService {
         logger.debug("Returning dummy note: {}", dummyNote.getTextStructured());
         return List.of(dummyNote);
     }
+
+    /**
+     * Returns all structured notes for a user, ordered chronologically (newest first).
+     * Uses optimized database query with idx_soap_note_user_created index.
+     */
+    @Override
+    public List<NoteResponse> getNotesChronological(String userId) {
+        logger.info("Fetching notes for user in chronological order");
+        UUID userUuid = UUID.fromString(userId);
+        
+        List<SoapNote> notes = soapNoteRepository.findByUserIdOrderByCreatedAtDesc(userUuid);
+        return notes.stream()
+                .map(this::convertToNoteResponse)
+                .toList();
+    }
+
+    /**
+     * Returns all structured notes for a user within a date range.
+     * Uses optimized database query with idx_soap_note_user_created index.
+     */
+    @Override
+    public List<NoteResponse> getNotesByDateRange(String userId, Instant startDate, Instant endDate) {
+        logger.info("Fetching notes for user within date range: {} to {}", startDate, endDate);
+        UUID userUuid = UUID.fromString(userId);
+        
+        List<SoapNote> notes = soapNoteRepository.findByUserIdAndCreatedAtBetween(userUuid, startDate, endDate);
+        return notes.stream()
+                .map(this::convertToNoteResponse)
+                .toList();
+    }
+
+    /**
+     * Converts a SoapNote entity to a NoteResponse DTO.
+     * Helper method to avoid code duplication.
+     */
+    private NoteResponse convertToNoteResponse(SoapNote note) {
+        return new NoteResponse(
+                note.getId(),
+                "", // textRaw not stored in SoapNote, could be retrieved from linked Transcript if needed
+                note.getTextStructured(),
+                note.getCreatedAt()
+        );
+    }
 }

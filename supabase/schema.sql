@@ -59,7 +59,6 @@ create table if not exists chat_message (
 );
 
 -- UserProfile-Tabelle
-
 create table if not exists user_profile (
   user_id uuid primary key references auth.users(id) on delete cascade,
   first_name text,
@@ -67,4 +66,30 @@ create table if not exists user_profile (
   display_name text,
   created_at timestamp with time zone default timezone('utc', now())
 );
+
+-- Performance-Indizes für häufige Query-Patterns
+-- Phase 3.2: Database Query Optimization
+
+-- User-basierte Queries (häufigste Pattern)
+create index if not exists idx_soap_note_user_id on soap_note(user_id);
+create index if not exists idx_transcript_user_id on transcript(user_id);
+create index if not exists idx_session_user_id on session(user_id);
+
+-- Date-basierte Queries für Reports und chronologische Abfragen
+create index if not exists idx_soap_note_user_created on soap_note(user_id, created_at desc);
+create index if not exists idx_transcript_user_created on transcript(user_id, created_at desc);
+create index if not exists idx_session_user_started on session(user_id, started_at desc);
+
+-- Session-basierte Queries für Transcript-Grouping
+create index if not exists idx_transcript_session_id on transcript(session_id);
+create index if not exists idx_soap_note_session_id on soap_note(session_id);
+
+-- Composite Indizes für kombinierte User+Session-Queries
+create index if not exists idx_transcript_session_user on transcript(session_id, user_id);
+create index if not exists idx_soap_note_session_user on soap_note(session_id, user_id);
+
+-- Date-Range-Queries für Analytics
+create index if not exists idx_soap_note_created_at on soap_note(created_at desc);
+create index if not exists idx_transcript_created_at on transcript(created_at desc);
+create index if not exists idx_session_started_at on session(started_at desc);
 
