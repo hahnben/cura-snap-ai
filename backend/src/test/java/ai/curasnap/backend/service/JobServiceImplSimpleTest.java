@@ -32,6 +32,12 @@ class JobServiceImplSimpleTest {
 
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
+    
+    @Mock
+    private AdaptiveRetryService adaptiveRetryService;
+    
+    @Mock
+    private DeadLetterQueueService deadLetterQueueService;
 
     @Mock
     private ValueOperations<String, Object> valueOperations;
@@ -55,7 +61,7 @@ class JobServiceImplSimpleTest {
         lenient().when(redisTemplate.opsForList()).thenReturn(listOperations);
         lenient().when(redisTemplate.opsForZSet()).thenReturn(zSetOperations);
 
-        jobService = new JobServiceImpl(redisTemplate);
+        jobService = new JobServiceImpl(redisTemplate, adaptiveRetryService, deadLetterQueueService);
     }
 
     @Test

@@ -31,6 +31,8 @@ public class JobServiceImpl implements JobService {
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;
+    private final AdaptiveRetryService adaptiveRetryService;
+    private final DeadLetterQueueService deadLetterQueueService;
 
     // Redis key prefixes for different data types
     private static final String JOB_KEY_PREFIX = "jobs:";
@@ -46,8 +48,12 @@ public class JobServiceImpl implements JobService {
     private static final int DEFAULT_MAX_RETRIES = 3;
 
     @Autowired
-    public JobServiceImpl(RedisTemplate<String, Object> redisTemplate) {
+    public JobServiceImpl(RedisTemplate<String, Object> redisTemplate,
+                         AdaptiveRetryService adaptiveRetryService,
+                         DeadLetterQueueService deadLetterQueueService) {
         this.redisTemplate = redisTemplate;
+        this.adaptiveRetryService = adaptiveRetryService;
+        this.deadLetterQueueService = deadLetterQueueService;
         this.objectMapper = new ObjectMapper();
         this.objectMapper.findAndRegisterModules(); // Support for Java 8 time types
     }
@@ -304,13 +310,26 @@ public class JobServiceImpl implements JobService {
     }
 
     /**
-     * Enhanced retry with intelligent strategy and Dead Letter Queue support
+     * Enhanced retry with adaptive intelligent strategy and Dead Letter Queue support
+     * Now integrates with AdaptiveRetryService for dynamic retry calculations
      *
      * @param jobId the job ID to retry
      * @param errorType the type of error that occurred (for adaptive retry strategy)
      * @return true if retry scheduled, false if max retries exceeded and job moved to DLQ
      */
     public boolean incrementRetryCountWithStrategy(String jobId, String errorType) {
+        return incrementRetryCountWithStrategy(jobId, errorType, null);
+    }
+
+    /**
+     * Enhanced retry with full adaptive strategy support
+     *
+     * @param jobId the job ID to retry
+     * @param errorType the type of error that occurred
+     * @param error the actual error/exception for better classification
+     * @return true if retry scheduled, false if max retries exceeded and job moved to DLQ
+     */
+    public boolean incrementRetryCountWithStrategy(String jobId, String errorType, Throwable error) {
         try {
             JobData jobData = getJobData(jobId);
             if (jobData == null) {
@@ -318,57 +337,153 @@ public class JobServiceImpl implements JobService {
                 return false;
             }
 
-            // Get appropriate retry strategy for this job type
-            RetryStrategy.RetryConfig retryConfig = RetryStrategy.getRetryConfigForJobType(
-                    jobData.getJobType().getValue(), errorType);
+            String serviceName = determineServiceNameFromJobType(jobData.getJobType());
 
-            // Calculate next retry attempt
-            RetryStrategy.RetryResult retryResult = RetryStrategy.calculateNextRetry(
-                    retryConfig, 
-                    jobData.getRetryCount(), 
-                    Instant.now(), 
-                    errorType);
-
-            if (!retryResult.isShouldRetry()) {
-                // Max retries exceeded - move to Dead Letter Queue
-                moveJobToDeadLetterQueue(jobData, retryResult.getReason());
-                recordRetryStats(jobData.getJobType().getValue(), jobData.getRetryCount(), false);
-                return false;
+            // Use adaptive retry service if available and error is provided
+            if (adaptiveRetryService != null && error != null) {
+                return handleAdaptiveRetry(jobData, serviceName, error);
+            } else {
+                return handleLegacyRetry(jobData, errorType);
             }
-
-            // Schedule retry
-            int newRetryCount = jobData.getRetryCount() + 1;
-            jobData.setRetryCount(newRetryCount);
-            jobData.setStatus(JobData.JobStatus.QUEUED);
-            
-            // Store retry metadata
-            Map<String, Object> retryMetadata = new HashMap<>();
-            retryMetadata.put("retryAttempt", newRetryCount);
-            retryMetadata.put("scheduledFor", retryResult.getNextRetryAt().toString());
-            retryMetadata.put("errorType", errorType);
-            retryMetadata.put("retryPolicy", retryConfig.getPolicy().name());
-            retryMetadata.put("delayMs", retryResult.getDelayUntilNextTry().toMillis());
-            jobData.getInputData().put("retryMetadata", retryMetadata);
-
-            // Update job data
-            String jobKey = JOB_KEY_PREFIX + jobId;
-            redisTemplate.opsForValue().set(jobKey, jobData, DEFAULT_JOB_EXPIRY);
-
-            // Schedule delayed retry using Redis sorted set
-            scheduleDelayedRetry(jobId, retryResult.getNextRetryAt(), jobData.getQueueName());
-            
-            // Record retry statistics
-            recordRetryStats(jobData.getJobType().getValue(), newRetryCount, true);
-
-            log.info("Scheduled retry for job {} (attempt {}/{}): {} - next retry at {}", 
-                    jobId, newRetryCount, jobData.getMaxRetries(), retryResult.getReason(), 
-                    retryResult.getNextRetryAt());
-            
-            return true;
 
         } catch (Exception e) {
             log.error("Failed to increment retry count for job {}: {}", jobId, e.getMessage(), e);
             return false;
+        }
+    }
+
+    /**
+     * Handle adaptive retry using the new AdaptiveRetryService
+     */
+    private boolean handleAdaptiveRetry(JobData jobData, String serviceName, Throwable error) {
+        try {
+            AdaptiveRetryService.AdaptiveRetryResult adaptiveResult = 
+                adaptiveRetryService.calculateAdaptiveRetry(
+                    serviceName, 
+                    jobData.getJobId(),
+                    jobData.getJobType(),
+                    error, 
+                    jobData.getRetryCount()
+                );
+
+            if (!adaptiveResult.isShouldRetry()) {
+                // Max retries exceeded or error not retryable - move to enhanced Dead Letter Queue
+                moveJobToEnhancedDLQ(jobData, adaptiveResult.getReason(), error);
+                recordRetryStats(jobData.getJobType().getValue(), jobData.getRetryCount(), false);
+                return false;
+            }
+
+            // Schedule adaptive retry
+            int newRetryCount = jobData.getRetryCount() + 1;
+            jobData.setRetryCount(newRetryCount);
+            jobData.setStatus(JobData.JobStatus.QUEUED);
+            
+            // Store enhanced retry metadata
+            Map<String, Object> retryMetadata = new HashMap<>();
+            retryMetadata.put("retryAttempt", newRetryCount);
+            retryMetadata.put("scheduledFor", adaptiveResult.getNextRetryAt().toString());
+            retryMetadata.put("errorType", error.getClass().getSimpleName());
+            retryMetadata.put("retryStrategy", "adaptive");
+            retryMetadata.put("delayMs", adaptiveResult.getDelayUntilNextTry().toMillis());
+            retryMetadata.put("reason", adaptiveResult.getReason());
+            retryMetadata.put("serviceName", serviceName);
+            jobData.getInputData().put("retryMetadata", retryMetadata);
+
+            // Update job data
+            String jobKey = JOB_KEY_PREFIX + jobData.getJobId();
+            redisTemplate.opsForValue().set(jobKey, jobData, DEFAULT_JOB_EXPIRY);
+
+            // Schedule delayed retry using Redis sorted set
+            scheduleDelayedRetry(jobData.getJobId(), adaptiveResult.getNextRetryAt(), jobData.getQueueName());
+            
+            // Record retry statistics
+            recordRetryStats(jobData.getJobType().getValue(), newRetryCount, true);
+
+            log.info("Scheduled adaptive retry for job {} (attempt {}/{}): {} - next retry at {}", 
+                    jobData.getJobId(), newRetryCount, jobData.getMaxRetries(), 
+                    adaptiveResult.getReason(), adaptiveResult.getNextRetryAt());
+            
+            return true;
+
+        } catch (Exception e) {
+            log.warn("Failed to use adaptive retry for job {}, falling back to legacy retry: {}", 
+                    jobData.getJobId(), e.getMessage());
+            return handleLegacyRetry(jobData, e.getClass().getSimpleName(), e);
+        }
+    }
+
+    /**
+     * Handle legacy retry using the original RetryStrategy
+     */
+    private boolean handleLegacyRetry(JobData jobData, String errorType) {
+        return handleLegacyRetry(jobData, errorType, null);
+    }
+
+    /**
+     * Handle legacy retry using the original RetryStrategy with error details
+     */
+    private boolean handleLegacyRetry(JobData jobData, String errorType, Throwable error) {
+        // Get appropriate retry strategy for this job type
+        RetryStrategy.RetryConfig retryConfig = RetryStrategy.getRetryConfigForJobType(
+                jobData.getJobType().getValue(), errorType);
+
+        // Calculate next retry attempt
+        RetryStrategy.RetryResult retryResult = RetryStrategy.calculateNextRetry(
+                retryConfig, 
+                jobData.getRetryCount(), 
+                Instant.now(), 
+                errorType);
+
+        if (!retryResult.isShouldRetry()) {
+            // Max retries exceeded - move to enhanced Dead Letter Queue
+            moveJobToEnhancedDLQ(jobData, retryResult.getReason(), error);
+            recordRetryStats(jobData.getJobType().getValue(), jobData.getRetryCount(), false);
+            return false;
+        }
+
+        // Schedule retry
+        int newRetryCount = jobData.getRetryCount() + 1;
+        jobData.setRetryCount(newRetryCount);
+        jobData.setStatus(JobData.JobStatus.QUEUED);
+        
+        // Store retry metadata
+        Map<String, Object> retryMetadata = new HashMap<>();
+        retryMetadata.put("retryAttempt", newRetryCount);
+        retryMetadata.put("scheduledFor", retryResult.getNextRetryAt().toString());
+        retryMetadata.put("errorType", errorType);
+        retryMetadata.put("retryPolicy", retryConfig.getPolicy().name());
+        retryMetadata.put("retryStrategy", "legacy");
+        retryMetadata.put("delayMs", retryResult.getDelayUntilNextTry().toMillis());
+        jobData.getInputData().put("retryMetadata", retryMetadata);
+
+        // Update job data
+        String jobKey = JOB_KEY_PREFIX + jobData.getJobId();
+        redisTemplate.opsForValue().set(jobKey, jobData, DEFAULT_JOB_EXPIRY);
+
+        // Schedule delayed retry using Redis sorted set
+        scheduleDelayedRetry(jobData.getJobId(), retryResult.getNextRetryAt(), jobData.getQueueName());
+        
+        // Record retry statistics
+        recordRetryStats(jobData.getJobType().getValue(), newRetryCount, true);
+
+        log.info("Scheduled legacy retry for job {} (attempt {}/{}): {} - next retry at {}", 
+                jobData.getJobId(), newRetryCount, jobData.getMaxRetries(), retryResult.getReason(), 
+                retryResult.getNextRetryAt());
+        
+        return true;
+    }
+
+    /**
+     * Determine service name from job type for adaptive retry
+     */
+    private String determineServiceNameFromJobType(JobData.JobType jobType) {
+        switch (jobType) {
+            case AUDIO_PROCESSING:
+                return "transcription-service";
+            case TEXT_PROCESSING:
+                return "agent-service";
+            default:
+                return "unknown-service";
         }
     }
 
@@ -506,7 +621,29 @@ public class JobServiceImpl implements JobService {
      * @param jobData the job that exceeded max retries
      * @param reason reason for moving to DLQ
      */
-    private void moveJobToDeadLetterQueue(JobData jobData, String reason) {
+    /**
+     * Enhanced method to move job to Dead Letter Queue with detailed failure analysis
+     */
+    private void moveJobToEnhancedDLQ(JobData jobData, String reason, Throwable error) {
+        try {
+            if (deadLetterQueueService != null) {
+                // Use enhanced DLQ service for better failure analysis and retry management
+                deadLetterQueueService.moveJobToDeadLetterQueue(jobData, reason, error);
+            } else {
+                // Fallback to legacy DLQ handling
+                moveJobToLegacyDLQ(jobData, reason);
+            }
+        } catch (Exception e) {
+            log.error("Failed to move job {} to enhanced DLQ, using legacy: {}", 
+                    jobData.getJobId(), e.getMessage());
+            moveJobToLegacyDLQ(jobData, reason);
+        }
+    }
+
+    /**
+     * Legacy Dead Letter Queue handling (fallback)
+     */
+    private void moveJobToLegacyDLQ(JobData jobData, String reason) {
         try {
             // Update job status to FAILED
             jobData.setStatus(JobData.JobStatus.FAILED);
@@ -536,11 +673,11 @@ public class JobServiceImpl implements JobService {
                 redisTemplate.opsForList().trim(dlqKey, -1000, -1);
             }
 
-            log.warn("Moved job {} to Dead Letter Queue {}: {}", 
+            log.warn("Moved job {} to legacy Dead Letter Queue {}: {}", 
                     jobData.getJobId(), dlqKey, reason);
 
         } catch (Exception e) {
-            log.error("Failed to move job {} to Dead Letter Queue: {}", 
+            log.error("Failed to move job {} to legacy Dead Letter Queue: {}", 
                     jobData.getJobId(), e.getMessage(), e);
         }
     }

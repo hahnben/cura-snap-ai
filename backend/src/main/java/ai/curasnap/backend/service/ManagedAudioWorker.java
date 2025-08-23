@@ -169,13 +169,13 @@ public class ManagedAudioWorker {
             log.error("Worker {} - Transcription failed for job {}: {}", workerId, jobId, e.getMessage());
             long processingTime = Duration.between(jobStartTime, Instant.now()).toMillis();
             workerHealthService.recordJobProcessing(workerId, false, processingTime);
-            failJob(jobId, "Transcription failed: " + e.getMessage(), "transcription_error");
+            failJob(jobId, "Transcription failed: " + e.getMessage(), "transcription_error", e);
             
         } catch (Exception e) {
             log.error("Worker {} - Unexpected error processing audio job {}: {}", workerId, jobId, e.getMessage(), e);
             long processingTime = Duration.between(jobStartTime, Instant.now()).toMillis();
             workerHealthService.recordJobProcessing(workerId, false, processingTime);
-            failJob(jobId, "Processing failed: " + e.getMessage(), "unexpected_error");
+            failJob(jobId, "Processing failed: " + e.getMessage(), "unexpected_error", e);
         }
     }
 
@@ -183,14 +183,22 @@ public class ManagedAudioWorker {
      * Handle job failure with intelligent retry
      */
     private void failJob(String jobId, String errorMessage, String errorType) {
+        failJob(jobId, errorMessage, errorType, null);
+    }
+
+    /**
+     * Handle job failure with adaptive intelligent retry including exception details
+     */
+    private void failJob(String jobId, String errorMessage, String errorType, Throwable error) {
         try {
             totalJobsFailed.incrementAndGet();
             incrementFailureCounter();
             
-            // Try to increment retry count with intelligent strategy
+            // Try to increment retry count with adaptive intelligent strategy
             boolean retryScheduled;
             if (jobService instanceof JobServiceImpl) {
-                retryScheduled = ((JobServiceImpl) jobService).incrementRetryCountWithStrategy(jobId, errorType);
+                // Use the new adaptive retry method if error is available
+                retryScheduled = ((JobServiceImpl) jobService).incrementRetryCountWithStrategy(jobId, errorType, error);
             } else {
                 retryScheduled = jobService.incrementRetryCount(jobId);
             }

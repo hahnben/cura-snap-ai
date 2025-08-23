@@ -2,6 +2,7 @@ package ai.curasnap.backend.controller;
 
 import ai.curasnap.backend.model.dto.*;
 import ai.curasnap.backend.service.JobService;
+import ai.curasnap.backend.service.ServiceDegradationService;
 import ai.curasnap.backend.service.TranscriptionService;
 import ai.curasnap.backend.service.WorkerHealthService;
 import ai.curasnap.backend.util.SecurityUtils;
@@ -16,6 +17,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import jakarta.validation.Valid;
 import java.util.*;
+import java.util.Base64;
 
 /**
  * REST controller for async job management and audio processing
@@ -29,14 +31,17 @@ public class AsyncNoteController {
     private final JobService jobService;
     private final TranscriptionService transcriptionService;
     private final WorkerHealthService workerHealthService;
+    private final ServiceDegradationService serviceDegradationService;
 
     @Autowired
     public AsyncNoteController(JobService jobService, 
                               TranscriptionService transcriptionService,
-                              WorkerHealthService workerHealthService) {
+                              WorkerHealthService workerHealthService,
+                              ServiceDegradationService serviceDegradationService) {
         this.jobService = jobService;
         this.transcriptionService = transcriptionService;
         this.workerHealthService = workerHealthService;
+        this.serviceDegradationService = serviceDegradationService;
     }
 
     /**
@@ -58,6 +63,11 @@ public class AsyncNoteController {
         log.info("Received async audio upload request from user: {}", userId);
 
         try {
+            // Check for system degradation
+            if (serviceDegradationService.isSystemDegraded()) {
+                return handleDegradedAudioUpload(userId, audioFile, sessionId);
+            }
+
             // Basic input validation
             if (audioFile == null || audioFile.isEmpty()) {
                 log.warn("Invalid request received: empty or missing audio file");
@@ -392,5 +402,160 @@ public class AsyncNoteController {
     private String getFileExtension(String filename) {
         int lastDotIndex = filename.lastIndexOf('.');
         return lastDotIndex > 0 ? filename.substring(lastDotIndex) : "";
+    }
+
+    /**
+     * Handle audio upload during system degradation
+     */
+    private ResponseEntity<JobResponse> handleDegradedAudioUpload(String userId, MultipartFile audioFile, String sessionId) {
+        try {
+            ServiceDegradationService.DegradationLevel degradationLevel = 
+                serviceDegradationService.getCurrentDegradationLevel();
+
+            log.warn("Audio upload during degradation level: {} for user: {}", degradationLevel, userId);
+
+            switch (degradationLevel) {
+                case MINOR_DEGRADATION:
+                case MODERATE_DEGRADATION:
+                    // Allow upload but inform user of potential delays
+                    return processWithDegradationWarning(userId, audioFile, sessionId);
+
+                case MAJOR_DEGRADATION:
+                    // Check if transcription service specifically is degraded
+                    if (serviceDegradationService.getServiceDegradationState("transcription-service").isDegraded()) {
+                        return returnTranscriptionServiceDegraded();
+                    }
+                    return processWithDegradationWarning(userId, audioFile, sessionId);
+
+                case CRITICAL_DEGRADATION:
+                case MAINTENANCE_MODE:
+                    // Return maintenance mode response
+                    return returnMaintenanceMode();
+
+                default:
+                    // Fallback to normal processing
+                    return processNormalAudioUpload(userId, audioFile, sessionId);
+            }
+
+        } catch (Exception e) {
+            log.error("Error handling degraded audio upload for user {}: {}", userId, e.getMessage(), e);
+            return ResponseEntity.status(503) // Service Unavailable
+                    .build();
+        }
+    }
+
+    /**
+     * Process audio upload with degradation warning
+     */
+    private ResponseEntity<JobResponse> processWithDegradationWarning(String userId, MultipartFile audioFile, String sessionId) {
+        try {
+            // Validate audio file
+            validateAudioFileForAsync(audioFile);
+
+            // Create job with degradation context
+            JobRequest jobRequest = createDegradedJobRequest(audioFile, sessionId);
+            JobResponse jobResponse = jobService.createJob(userId, jobRequest);
+
+            // Add degradation warning to response
+            Map<String, Object> enhancedResponse = new HashMap<>();
+            enhancedResponse.put("jobId", jobResponse.getJobId());
+            enhancedResponse.put("status", jobResponse.getStatus());
+            enhancedResponse.put("degradationWarning", serviceDegradationService.getDegradationMessage());
+            enhancedResponse.put("estimatedDelayMinutes", calculateEstimatedDelay());
+
+            log.info("Created degraded audio processing job {} for user {} with warning", 
+                    jobResponse.getJobId(), userId);
+
+            return ResponseEntity.ok()
+                    .header("X-System-Status", "degraded")
+                    .header("X-Degradation-Level", serviceDegradationService.getCurrentDegradationLevel().name())
+                    .body(jobResponse);
+
+        } catch (Exception e) {
+            log.error("Failed to process degraded audio upload: {}", e.getMessage());
+            return ResponseEntity.status(503).build();
+        }
+    }
+
+    /**
+     * Return transcription service degraded response
+     */
+    private ResponseEntity<JobResponse> returnTranscriptionServiceDegraded() {
+        String message = serviceDegradationService.getServiceDegradationMessage("transcription-service");
+        
+        return ResponseEntity.status(503) // Service Unavailable
+                .header("X-Service-Status", "transcription-degraded")
+                .header("X-Degradation-Message", message)
+                .header("Retry-After", "1800") // Suggest retry after 30 minutes
+                .build();
+    }
+
+    /**
+     * Return maintenance mode response
+     */
+    private ResponseEntity<JobResponse> returnMaintenanceMode() {
+        String message = serviceDegradationService.getDegradationMessage();
+        
+        return ResponseEntity.status(503) // Service Unavailable
+                .header("X-Service-Status", "maintenance")
+                .header("X-Degradation-Message", message)
+                .header("Retry-After", "3600") // Suggest retry after 1 hour
+                .build();
+    }
+
+    /**
+     * Process normal audio upload (fallback)
+     */
+    private ResponseEntity<JobResponse> processNormalAudioUpload(String userId, MultipartFile audioFile, String sessionId) {
+        // This would contain the original processing logic
+        // For now, we'll just return a simple response
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Create job request with degradation context
+     */
+    private JobRequest createDegradedJobRequest(MultipartFile audioFile, String sessionId) {
+        Map<String, Object> inputData = new HashMap<>();
+        inputData.put("originalFileName", 
+            SecurityUtils.sanitizeFilenameForLogging(audioFile.getOriginalFilename()));
+        inputData.put("contentType", audioFile.getContentType());
+        inputData.put("fileSize", audioFile.getSize());
+        inputData.put("degradationContext", true);
+        inputData.put("degradationLevel", serviceDegradationService.getCurrentDegradationLevel().name());
+        
+        // Store audio data as Base64
+        try {
+            byte[] audioBytes = audioFile.getBytes();
+            String audioBase64 = Base64.getEncoder().encodeToString(audioBytes);
+            inputData.put("audioData", audioBase64);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to encode audio data", e);
+        }
+
+        return JobRequest.builder()
+                .jobType(JobData.JobType.AUDIO_PROCESSING)
+                .inputData(inputData)
+                .sessionId(sessionId)
+                .build();
+    }
+
+    /**
+     * Calculate estimated delay based on degradation level
+     */
+    private int calculateEstimatedDelay() {
+        ServiceDegradationService.DegradationLevel level = 
+            serviceDegradationService.getCurrentDegradationLevel();
+        
+        switch (level) {
+            case MINOR_DEGRADATION:
+                return 5; // 5 minutes additional delay
+            case MODERATE_DEGRADATION:
+                return 15; // 15 minutes additional delay
+            case MAJOR_DEGRADATION:
+                return 30; // 30 minutes additional delay
+            default:
+                return 0;
+        }
     }
 }

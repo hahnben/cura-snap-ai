@@ -170,10 +170,11 @@ public class ManagedTextWorker {
             totalJobsFailed.incrementAndGet();
             incrementFailureCounter();
             
-            // Try to increment retry count with intelligent strategy
+            // Try to increment retry count with adaptive intelligent strategy
             boolean retryScheduled;
             if (jobService instanceof JobServiceImpl) {
-                retryScheduled = ((JobServiceImpl) jobService).incrementRetryCountWithStrategy(jobId, errorType);
+                // Use the new adaptive retry method
+                retryScheduled = ((JobServiceImpl) jobService).incrementRetryCountWithStrategy(jobId, errorType, null);
             } else {
                 retryScheduled = jobService.incrementRetryCount(jobId);
             }
