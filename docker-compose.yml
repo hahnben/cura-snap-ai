@@ -35,14 +35,29 @@ services:
       - SUPABASE_JWT_SECRET=${SUPABASE_JWT_SECRET}
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-defaultpass}
+      # Health Check Configuration
+      - HEALTH_DATABASE_TIMEOUT=3000
+      - HEALTH_TRANSCRIPTION_TIMEOUT=5000
+      - HEALTH_TRANSCRIPTION_URL=http://transcription-service:8002/health
+      - HEALTH_AGENT_TIMEOUT=5000
+      - HEALTH_AGENT_URL=http://agent-service:8001/health
+      # Service URLs for internal communication
+      - AGENT_SERVICE_URL=http://agent-service:8001
+      - TRANSCRIPTION_SERVICE_URL=http://transcription-service:8002
     depends_on:
       redis:
+        condition: service_healthy
+      agent-service:
+        condition: service_healthy
+      transcription-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
+      timeout: 15s
+      retries: 5
+      start_period: 60s
     restart: unless-stopped
 
   agent-service:
@@ -54,13 +69,19 @@ services:
       - "8001:8001"
     environment:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - LLM_MODEL=${LLM_MODEL}
+      - LLM_MODEL=${LLM_MODEL:-gpt-4o}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
+      timeout: 15s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
 
   transcription-service:
     build:
@@ -74,9 +95,15 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
+      timeout: 20s
+      retries: 5
+      start_period: 90s  # Whisper model loading takes time
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 2G  # Whisper models need more memory
+          cpus: '2.0'
 
 volumes:
   redis_data:

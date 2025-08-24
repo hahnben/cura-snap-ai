@@ -1,10 +1,14 @@
 package ai.curasnap.backend.controller;
 
+import ai.curasnap.backend.health.DatabaseHealthIndicator;
+import ai.curasnap.backend.health.TranscriptionServiceHealthIndicator;
+import ai.curasnap.backend.health.AgentServiceHealthIndicator;
 import ai.curasnap.backend.service.AgentCacheMetricsService;
 import ai.curasnap.backend.service.CachedAgentServiceClient;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.actuate.health.Health;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.ResponseEntity;
@@ -32,6 +36,15 @@ public class HealthController {
     @Autowired(required = false)
     private CachedAgentServiceClient cachedAgentServiceClient;
     
+    @Autowired(required = false)
+    private DatabaseHealthIndicator databaseHealthIndicator;
+    
+    @Autowired(required = false)
+    private TranscriptionServiceHealthIndicator transcriptionServiceHealthIndicator;
+    
+    @Autowired(required = false)
+    private AgentServiceHealthIndicator agentServiceHealthIndicator;
+    
     @Value("${app.agent.cache.enabled:false}")
     private boolean cacheEnabled;
 
@@ -42,8 +55,26 @@ public class HealthController {
         
         health.put("status", "UP");
         
+        // Database health check
+        if (databaseHealthIndicator != null) {
+            Health dbHealth = databaseHealthIndicator.health();
+            components.put("database", convertHealthToMap(dbHealth));
+        }
+        
         // Redis health check
         components.put("redis", checkRedisHealth());
+        
+        // Agent Service health check
+        if (agentServiceHealthIndicator != null) {
+            Health agentHealth = agentServiceHealthIndicator.health();
+            components.put("agent_service", convertHealthToMap(agentHealth));
+        }
+        
+        // Transcription Service health check
+        if (transcriptionServiceHealthIndicator != null) {
+            Health transcriptionHealth = transcriptionServiceHealthIndicator.health();
+            components.put("transcription_service", convertHealthToMap(transcriptionHealth));
+        }
         
         // Agent Cache health check (if enabled)
         if (cacheEnabled && cacheMetricsService != null) {
@@ -94,6 +125,45 @@ public class HealthController {
             error.put("error", "Failed to retrieve metrics");
             return ResponseEntity.ok(error);
         }
+    }
+    
+    @GetMapping("/health/database")
+    public ResponseEntity<Map<String, Object>> databaseHealth() {
+        if (databaseHealthIndicator == null) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("status", "UNAVAILABLE");
+            error.put("error", "Database health indicator not available");
+            return ResponseEntity.ok(error);
+        }
+        
+        Health dbHealth = databaseHealthIndicator.health();
+        return ResponseEntity.ok(convertHealthToMap(dbHealth));
+    }
+    
+    @GetMapping("/health/agent")
+    public ResponseEntity<Map<String, Object>> agentServiceHealth() {
+        if (agentServiceHealthIndicator == null) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("status", "UNAVAILABLE");
+            error.put("error", "Agent service health indicator not available");
+            return ResponseEntity.ok(error);
+        }
+        
+        Health agentHealth = agentServiceHealthIndicator.health();
+        return ResponseEntity.ok(convertHealthToMap(agentHealth));
+    }
+    
+    @GetMapping("/health/transcription")
+    public ResponseEntity<Map<String, Object>> transcriptionServiceHealth() {
+        if (transcriptionServiceHealthIndicator == null) {
+            Map<String, Object> error = new HashMap<>();
+            error.put("status", "UNAVAILABLE");
+            error.put("error", "Transcription service health indicator not available");
+            return ResponseEntity.ok(error);
+        }
+        
+        Health transcriptionHealth = transcriptionServiceHealthIndicator.health();
+        return ResponseEntity.ok(convertHealthToMap(transcriptionHealth));
     }
 
     private Map<String, Object> checkRedisHealth() {
@@ -220,5 +290,23 @@ public class HealthController {
         } catch (Exception e) {
             return "unknown";
         }
+    }
+
+    /**
+     * Converts a Spring Boot Actuator Health object to a Map for consistent response format.
+     * 
+     * @param health the Health object to convert
+     * @return Map representation of the health status
+     */
+    private Map<String, Object> convertHealthToMap(Health health) {
+        Map<String, Object> healthMap = new HashMap<>();
+        healthMap.put("status", health.getStatus().getCode());
+        
+        // Add details if available
+        if (health.getDetails() != null && !health.getDetails().isEmpty()) {
+            healthMap.put("details", health.getDetails());
+        }
+        
+        return healthMap;
     }
 }
