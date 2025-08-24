@@ -4,9 +4,11 @@ package ai.curasnap.backend.controller;
 import ai.curasnap.backend.model.dto.NoteRequest;
 import ai.curasnap.backend.model.dto.NoteResponse;
 import ai.curasnap.backend.service.NoteService;
+import ai.curasnap.backend.service.RequestLatencyMetricsService;
 import ai.curasnap.backend.service.TranscriptionService;
 import ai.curasnap.backend.service.TranscriptionService.TranscriptionException;
 
+import io.micrometer.core.annotation.Timed;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,17 +33,20 @@ public class NoteController {
 
     private final NoteService noteService;
     private final TranscriptionService transcriptionService;
+    private final RequestLatencyMetricsService metricsService;
 
     /**
      * Constructs a NoteController with injected services.
      *
      * @param noteService the service used to handle note-related operations
      * @param transcriptionService the service used to handle audio transcription
+     * @param metricsService the service used to track request latency and performance metrics
      */
     @Autowired
-    public NoteController(NoteService noteService, TranscriptionService transcriptionService) {
+    public NoteController(NoteService noteService, TranscriptionService transcriptionService, RequestLatencyMetricsService metricsService) {
         this.noteService = noteService;
         this.transcriptionService = transcriptionService;
+        this.metricsService = metricsService;
     }
 
     /**
@@ -51,6 +56,7 @@ public class NoteController {
      * @param jwt the decoded JWT token of the authenticated user
      * @return a ResponseEntity containing a greeting message
      */
+    @Timed(value = "http_request_duration_seconds", description = "Hello endpoint request duration", extraTags = {"endpoint", "/api/v1/hello", "operation", "hello"})
     @GetMapping("/hello")
     public ResponseEntity<String> hello(@AuthenticationPrincipal Jwt jwt) {
         // String userId = jwt.getSubject();
@@ -77,6 +83,7 @@ public class NoteController {
      * @param request the incoming request with raw transcript text
      * @return a ResponseEntity containing the formatted note
      */
+    @Timed(value = "http_request_duration_seconds", description = "SOAP note formatting request duration", extraTags = {"endpoint", "/api/v1/notes/format", "operation", "soap_generation"})
     @PostMapping("/notes/format")
     public ResponseEntity<NoteResponse> formatNote(
             @AuthenticationPrincipal Jwt jwt,
@@ -95,7 +102,8 @@ public class NoteController {
             return ResponseEntity.badRequest().build();
         }
 
-        NoteResponse response = noteService.formatNote(userId, request);
+        // Time the SOAP generation operation with detailed metrics
+        NoteResponse response = metricsService.timeSoapGeneration(() -> noteService.formatNote(userId, request));
         return ResponseEntity.ok(response);
     }
 
@@ -107,6 +115,7 @@ public class NoteController {
      * @param audioFile the uploaded audio file
      * @return a ResponseEntity containing the formatted note
      */
+    @Timed(value = "http_request_duration_seconds", description = "Audio processing and SOAP generation request duration", extraTags = {"endpoint", "/api/v1/notes/format-audio", "operation", "audio_processing"})
     @PostMapping("/notes/format-audio")
     public ResponseEntity<NoteResponse> formatAudio(
             @AuthenticationPrincipal Jwt jwt,
@@ -122,23 +131,46 @@ public class NoteController {
         }
 
         try {
-            // Transcribe audio to text
-            String transcript = transcriptionService.transcribe(audioFile);
-            logger.info("Audio transcribed successfully for user: {}", userId);
+            // Time the complete audio processing pipeline
+            NoteResponse response = metricsService.timeAudioTranscription(() -> {
+                try {
+                    // Transcribe audio to text
+                    String transcript = transcriptionService.transcribe(audioFile);
+                    logger.info("Audio transcribed successfully for user: {}", userId);
 
-            // Create NoteRequest with transcribed text
-            NoteRequest request = new NoteRequest();
-            request.setTextRaw(transcript);
+                    // Create NoteRequest with transcribed text
+                    NoteRequest request = new NoteRequest();
+                    request.setTextRaw(transcript);
 
-            // Use existing note formatting pipeline
-            NoteResponse response = noteService.formatNote(userId, request);
+                    // Use existing note formatting pipeline
+                    return noteService.formatNote(userId, request);
+                } catch (TranscriptionException e) {
+                    // Wrap checked exception as runtime exception to work with lambda
+                    throw new RuntimeException("Transcription failed", e);
+                }
+            });
+            
+            // Track successful audio processing
+            metricsService.incrementCounter("audio_files_processed_total", "status", "success", "user_id", userId);
             return ResponseEntity.ok(response);
 
-        } catch (TranscriptionException e) {
-            logger.error("Transcription failed for user {}: {}", userId, e.getMessage());
-            return ResponseEntity.badRequest().build();
+        } catch (RuntimeException e) {
+            // Check if this is a wrapped TranscriptionException
+            if (e.getCause() instanceof TranscriptionException) {
+                logger.error("Transcription failed for user {}: {}", userId, e.getCause().getMessage());
+                // Track transcription failures
+                metricsService.incrementCounter("audio_files_processed_total", "status", "transcription_error", "user_id", userId, "error_type", "TranscriptionException");
+                return ResponseEntity.badRequest().build();
+            } else {
+                logger.error("Error processing audio file for user {}: {}", userId, e.getMessage());
+                // Track general processing failures
+                metricsService.incrementCounter("audio_files_processed_total", "status", "processing_error", "user_id", userId, "error_type", e.getClass().getSimpleName());
+                return ResponseEntity.internalServerError().build();
+            }
         } catch (Exception e) {
-            logger.error("Error processing audio file for user {}: {}", userId, e.getMessage());
+            logger.error("Unexpected error processing audio file for user {}: {}", userId, e.getMessage());
+            // Track general processing failures
+            metricsService.incrementCounter("audio_files_processed_total", "status", "processing_error", "user_id", userId, "error_type", e.getClass().getSimpleName());
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -150,12 +182,19 @@ public class NoteController {
      * @param jwt the decoded JWT token of the authenticated user
      * @return a ResponseEntity containing a list of notes
      */
+    @Timed(value = "http_request_duration_seconds", description = "Get user notes request duration", extraTags = {"endpoint", "/api/v1/notes", "operation", "get_notes"})
     @GetMapping("/notes")
     public ResponseEntity<List<NoteResponse>> getNotes(@AuthenticationPrincipal Jwt jwt) {
         String userId = jwt.getSubject();
         logger.info("User {} requested their notes via /notes", userId);
 
-        List<NoteResponse> notes = noteService.getNotes(userId);
+        // Time the database retrieval operation
+        List<NoteResponse> notes = metricsService.timeDatabaseOperation("get_notes", () -> noteService.getNotes(userId));
+        
+        // Track notes retrieval metrics
+        metricsService.incrementCounter("notes_retrieved_total", "user_id", userId);
+        metricsService.recordGauge("notes_count", notes.size(), "user_id", userId);
+        
         return ResponseEntity.ok(notes);
     }
 

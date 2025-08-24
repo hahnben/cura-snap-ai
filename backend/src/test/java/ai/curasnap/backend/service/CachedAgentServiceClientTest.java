@@ -1,5 +1,7 @@
 package ai.curasnap.backend.service;
 
+import io.micrometer.core.instrument.MeterRegistry;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
@@ -39,6 +41,7 @@ class CachedAgentServiceClientTest {
     @Mock
     private ValueOperations<String, Object> valueOperations;
 
+    private MeterRegistry meterRegistry;
     private CachedAgentServiceClient cachedClient;
     
     private static final String TEST_TRANSCRIPT = "Patient reports headache and nausea.";
@@ -47,11 +50,13 @@ class CachedAgentServiceClientTest {
 
     @BeforeEach
     void setUp() {
+        meterRegistry = new SimpleMeterRegistry();
         cachedClient = new CachedAgentServiceClient(
             delegateClient,
             cacheKeyGenerator,
             redisTemplate,
             metricsService,
+            meterRegistry,
             true,  // cacheEnabled
             24,    // cacheTtlHours
             true   // metricsEnabled
@@ -155,6 +160,7 @@ class CachedAgentServiceClientTest {
             cacheKeyGenerator,
             redisTemplate,
             metricsService,
+            meterRegistry,
             false, // cacheEnabled = false
             24,
             true

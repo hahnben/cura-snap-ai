@@ -2,11 +2,13 @@ package ai.curasnap.backend.controller;
 
 import ai.curasnap.backend.model.dto.*;
 import ai.curasnap.backend.service.JobService;
+import ai.curasnap.backend.service.RequestLatencyMetricsService;
 import ai.curasnap.backend.service.ServiceDegradationService;
 import ai.curasnap.backend.service.TranscriptionService;
 import ai.curasnap.backend.service.WorkerHealthService;
 import ai.curasnap.backend.util.SecurityUtils;
 
+import io.micrometer.core.annotation.Timed;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
@@ -32,16 +34,19 @@ public class AsyncNoteController {
     private final TranscriptionService transcriptionService;
     private final WorkerHealthService workerHealthService;
     private final ServiceDegradationService serviceDegradationService;
+    private final RequestLatencyMetricsService metricsService;
 
     @Autowired
     public AsyncNoteController(JobService jobService, 
                               TranscriptionService transcriptionService,
                               WorkerHealthService workerHealthService,
-                              ServiceDegradationService serviceDegradationService) {
+                              ServiceDegradationService serviceDegradationService,
+                              RequestLatencyMetricsService metricsService) {
         this.jobService = jobService;
         this.transcriptionService = transcriptionService;
         this.workerHealthService = workerHealthService;
         this.serviceDegradationService = serviceDegradationService;
+        this.metricsService = metricsService;
     }
 
     /**
@@ -53,6 +58,7 @@ public class AsyncNoteController {
      * @param sessionId optional session ID for tracking
      * @return ResponseEntity containing job information
      */
+    @Timed(value = "http_request_duration_seconds", description = "Async audio upload request duration", extraTags = {"endpoint", "/api/v1/async/notes/format-audio", "operation", "async_audio_upload"})
     @PostMapping("/notes/format-audio")
     public ResponseEntity<JobResponse> formatAudioAsync(
             @AuthenticationPrincipal Jwt jwt,
@@ -103,8 +109,11 @@ public class AsyncNoteController {
                     .sessionId(sessionId)
                     .build();
 
-            // Create async job
-            JobResponse jobResponse = jobService.createJob(userId, jobRequest);
+            // Create async job with metrics timing
+            JobResponse jobResponse = metricsService.timeAsyncJob("audio_processing", () -> jobService.createJob(userId, jobRequest));
+            
+            // Track async job creation metrics
+            metricsService.incrementCounter("async_jobs_created_total", "job_type", "audio_processing", "user_id", userId, "status", "success");
             
             log.info("Created async audio processing job {} for user {}", 
                     jobResponse.getJobId(), userId);
@@ -113,13 +122,19 @@ public class AsyncNoteController {
 
         } catch (TranscriptionService.TranscriptionException e) {
             log.warn("Audio validation failed for user {}: {}", userId, e.getMessage());
+            // Track validation failures
+            metricsService.incrementCounter("async_jobs_created_total", "job_type", "audio_processing", "user_id", userId, "status", "validation_error", "error_type", "TranscriptionException");
             return ResponseEntity.badRequest().build();
         } catch (JobService.JobServiceException e) {
             log.error("Failed to create async job for user {}: {}", userId, e.getMessage());
+            // Track job creation failures
+            metricsService.incrementCounter("async_jobs_created_total", "job_type", "audio_processing", "user_id", userId, "status", "job_creation_error", "error_type", "JobServiceException");
             return ResponseEntity.internalServerError().build();
         } catch (Exception e) {
             log.error("Unexpected error processing async audio upload for user {}: {}", 
                     userId, e.getMessage(), e);
+            // Track unexpected errors
+            metricsService.incrementCounter("async_jobs_created_total", "job_type", "audio_processing", "user_id", userId, "status", "unexpected_error", "error_type", e.getClass().getSimpleName());
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -132,6 +147,7 @@ public class AsyncNoteController {
      * @param jobId the unique job identifier
      * @return ResponseEntity containing job status
      */
+    @Timed(value = "http_request_duration_seconds", description = "Job status polling request duration", extraTags = {"endpoint", "/api/v1/async/jobs/{jobId}", "operation", "job_status_polling"})
     @GetMapping("/jobs/{jobId}")
     public ResponseEntity<JobStatusResponse> getJobStatus(
             @AuthenticationPrincipal Jwt jwt,
@@ -140,12 +156,17 @@ public class AsyncNoteController {
         String userId = (jwt != null) ? jwt.getSubject() : "test-user";
         
         try {
-            Optional<JobStatusResponse> jobStatus = jobService.getJobStatus(jobId, userId);
+            // Time job status retrieval operation
+            Optional<JobStatusResponse> jobStatus = metricsService.timeDatabaseOperation("get_job_status", () -> jobService.getJobStatus(jobId, userId));
             
             if (jobStatus.isPresent()) {
+                // Track successful status polling
+                metricsService.incrementCounter("job_status_polls_total", "user_id", userId, "status", "success", "found", "true");
                 return ResponseEntity.ok(jobStatus.get());
             } else {
                 log.warn("Job {} not found or access denied for user {}", jobId, userId);
+                // Track not found polls
+                metricsService.incrementCounter("job_status_polls_total", "user_id", userId, "status", "not_found", "found", "false");
                 return ResponseEntity.notFound().build();
             }
             
@@ -164,6 +185,7 @@ public class AsyncNoteController {
      * @param offset offset for pagination (default: 0)
      * @return ResponseEntity containing list of user jobs
      */
+    @Timed(value = "http_request_duration_seconds", description = "Get user jobs request duration", extraTags = {"endpoint", "/api/v1/async/jobs", "operation", "get_user_jobs"})
     @GetMapping("/jobs")
     public ResponseEntity<List<JobStatusResponse>> getUserJobs(
             @AuthenticationPrincipal Jwt jwt,
@@ -184,7 +206,12 @@ public class AsyncNoteController {
                 return ResponseEntity.badRequest().build();
             }
 
-            List<JobStatusResponse> userJobs = jobService.getJobsByUser(userId, limit, offset);
+            // Time user jobs retrieval with pagination metrics
+            List<JobStatusResponse> userJobs = metricsService.timeDatabaseOperation("get_user_jobs", () -> jobService.getJobsByUser(userId, limit, offset));
+            
+            // Track job retrieval metrics
+            metricsService.incrementCounter("user_jobs_retrieved_total", "user_id", userId);
+            metricsService.recordGauge("user_jobs_count", userJobs.size(), "user_id", userId, "limit", String.valueOf(limit));
             
             log.debug("Retrieved {} jobs for user {} (limit: {}, offset: {})", 
                     userJobs.size(), userId, limit, offset);
@@ -205,6 +232,7 @@ public class AsyncNoteController {
      * @param jobId the unique job identifier
      * @return ResponseEntity indicating cancellation success
      */
+    @Timed(value = "http_request_duration_seconds", description = "Job cancellation request duration", extraTags = {"endpoint", "/api/v1/async/jobs/{jobId}", "operation", "cancel_job"})
     @DeleteMapping("/jobs/{jobId}")
     public ResponseEntity<Void> cancelJob(
             @AuthenticationPrincipal Jwt jwt,
@@ -213,14 +241,19 @@ public class AsyncNoteController {
         String userId = (jwt != null) ? jwt.getSubject() : "test-user";
         
         try {
-            boolean cancelled = jobService.cancelJob(jobId, userId);
+            // Time job cancellation operation
+            boolean cancelled = metricsService.timeDatabaseOperation("cancel_job", () -> jobService.cancelJob(jobId, userId));
             
             if (cancelled) {
                 log.info("Successfully cancelled job {} for user {}", jobId, userId);
+                // Track successful cancellations
+                metricsService.incrementCounter("job_cancellations_total", "user_id", userId, "status", "success", "cancelled", "true");
                 return ResponseEntity.noContent().build();
             } else {
                 log.warn("Failed to cancel job {} for user {} (not found, unauthorized, or not cancellable)", 
                         jobId, userId);
+                // Track failed cancellations
+                metricsService.incrementCounter("job_cancellations_total", "user_id", userId, "status", "not_cancellable", "cancelled", "false");
                 return ResponseEntity.notFound().build();
             }
             
@@ -236,13 +269,19 @@ public class AsyncNoteController {
      * @param queueName the queue name to get statistics for
      * @return ResponseEntity containing queue statistics
      */
+    @Timed(value = "http_request_duration_seconds", description = "Queue statistics request duration", extraTags = {"endpoint", "/api/v1/async/admin/queues/{queueName}/stats", "operation", "get_queue_stats"})
     @GetMapping("/admin/queues/{queueName}/stats")
     public ResponseEntity<Map<String, Object>> getQueueStats(
             @PathVariable String queueName
     ) {
         try {
             // TODO: Add admin authorization check
-            Map<String, Object> stats = jobService.getQueueStats(queueName);
+            // Time queue stats retrieval
+            Map<String, Object> stats = metricsService.timeExternalService("redis_queue", () -> jobService.getQueueStats(queueName));
+            
+            // Track queue stats requests
+            metricsService.incrementCounter("queue_stats_requests_total", "queue_name", queueName, "status", "success");
+            
             return ResponseEntity.ok(stats);
             
         } catch (Exception e) {
@@ -256,6 +295,7 @@ public class AsyncNoteController {
      *
      * @return ResponseEntity indicating service health
      */
+    @Timed(value = "http_request_duration_seconds", description = "Async health check request duration", extraTags = {"endpoint", "/api/v1/async/health", "operation", "health_check"})
     @GetMapping("/health")
     public ResponseEntity<Map<String, String>> health() {
         Map<String, String> health = new HashMap<>();
@@ -263,9 +303,12 @@ public class AsyncNoteController {
         health.put("service", "async-note-processing");
         health.put("timestamp", java.time.Instant.now().toString());
         
-        // Check transcription service availability
-        boolean transcriptionAvailable = transcriptionService.isTranscriptionServiceAvailable();
+        // Check transcription service availability with metrics
+        boolean transcriptionAvailable = metricsService.timeExternalService("transcription_health", () -> transcriptionService.isTranscriptionServiceAvailable());
         health.put("transcriptionService", transcriptionAvailable ? "UP" : "DOWN");
+        
+        // Track health check metrics
+        metricsService.incrementCounter("health_checks_total", "service", "async_processing", "transcription_available", String.valueOf(transcriptionAvailable));
         
         return ResponseEntity.ok(health);
     }
@@ -275,10 +318,16 @@ public class AsyncNoteController {
      *
      * @return ResponseEntity containing detailed system health
      */
+    @Timed(value = "http_request_duration_seconds", description = "System health report request duration", extraTags = {"endpoint", "/api/v1/async/admin/health/system", "operation", "get_system_health"})
     @GetMapping("/admin/health/system")
     public ResponseEntity<WorkerHealthService.SystemHealthReport> getSystemHealth() {
         try {
-            WorkerHealthService.SystemHealthReport report = workerHealthService.getSystemHealthReport();
+            // Time system health report generation
+            WorkerHealthService.SystemHealthReport report = metricsService.timeOperation("system_health_report", "/api/v1/async/admin/health/system", "GET", () -> workerHealthService.getSystemHealthReport());
+            
+            // Track system health metrics
+            metricsService.incrementCounter("system_health_reports_total", "status", "success");
+            
             return ResponseEntity.ok(report);
             
         } catch (Exception e) {
@@ -292,10 +341,17 @@ public class AsyncNoteController {
      *
      * @return ResponseEntity containing active workers list
      */
+    @Timed(value = "http_request_duration_seconds", description = "Get active workers request duration", extraTags = {"endpoint", "/api/v1/async/admin/workers/active", "operation", "get_active_workers"})
     @GetMapping("/admin/workers/active")
     public ResponseEntity<List<WorkerHealthService.WorkerHealth>> getActiveWorkers() {
         try {
-            List<WorkerHealthService.WorkerHealth> activeWorkers = workerHealthService.getActiveWorkers();
+            // Time active workers retrieval
+            List<WorkerHealthService.WorkerHealth> activeWorkers = metricsService.timeOperation("get_active_workers", "/api/v1/async/admin/workers/active", "GET", () -> workerHealthService.getActiveWorkers());
+            
+            // Track active workers metrics
+            metricsService.incrementCounter("active_workers_requests_total", "status", "success");
+            metricsService.recordGauge("active_workers_count", activeWorkers.size());
+            
             return ResponseEntity.ok(activeWorkers);
             
         } catch (Exception e) {
@@ -310,14 +366,24 @@ public class AsyncNoteController {
      * @param workerId the worker ID to check
      * @return ResponseEntity containing worker health data
      */
+    @Timed(value = "http_request_duration_seconds", description = "Get worker health request duration", extraTags = {"endpoint", "/api/v1/async/admin/workers/{workerId}", "operation", "get_worker_health"})
     @GetMapping("/admin/workers/{workerId}")
     public ResponseEntity<WorkerHealthService.WorkerHealth> getWorkerHealth(
             @PathVariable String workerId
     ) {
         try {
-            return workerHealthService.getWorkerHealth(workerId)
-                    .map(ResponseEntity::ok)
-                    .orElse(ResponseEntity.notFound().build());
+            // Time worker health retrieval
+            Optional<WorkerHealthService.WorkerHealth> workerHealth = metricsService.timeOperation("get_worker_health", "/api/v1/async/admin/workers/" + workerId, "GET", () -> workerHealthService.getWorkerHealth(workerId));
+            
+            if (workerHealth.isPresent()) {
+                // Track successful worker health requests
+                metricsService.incrementCounter("worker_health_requests_total", "worker_id", workerId, "status", "success", "found", "true");
+                return ResponseEntity.ok(workerHealth.get());
+            } else {
+                // Track worker not found
+                metricsService.incrementCounter("worker_health_requests_total", "worker_id", workerId, "status", "not_found", "found", "false");
+                return ResponseEntity.notFound().build();
+            }
                     
         } catch (Exception e) {
             log.error("Failed to get worker health for {}: {}", workerId, e.getMessage());
