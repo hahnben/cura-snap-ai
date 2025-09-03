@@ -5,6 +5,7 @@ import ai.curasnap.backend.service.interfaces.WorkerMetricsProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -43,7 +44,7 @@ public class WorkerHealthService implements WorkerMetricsProvider {
     private volatile int activeWorkers = 0;
 
     @Autowired
-    public WorkerHealthService(RedisTemplate<String, Object> redisTemplate, QueueStatsProvider queueStatsProvider) {
+    public WorkerHealthService(RedisTemplate<String, Object> redisTemplate, @Lazy QueueStatsProvider queueStatsProvider) {
         this.redisTemplate = redisTemplate;
         this.queueStatsProvider = queueStatsProvider;
     }
