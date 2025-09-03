@@ -1,6 +1,7 @@
 package ai.curasnap.backend.service;
 
 import ai.curasnap.backend.model.dto.JobData;
+import ai.curasnap.backend.service.interfaces.WorkerMetricsProvider;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -31,7 +32,7 @@ public class AdaptiveRetryService {
 
     private final ErrorClassificationService errorClassificationService;
     private final CircuitBreakerService circuitBreakerService;
-    private final WorkerHealthService workerHealthService;
+    private final WorkerMetricsProvider workerMetricsProvider;
     private final RedisTemplate<String, Object> redisTemplate;
 
     // Redis keys for adaptive retry state
@@ -47,11 +48,11 @@ public class AdaptiveRetryService {
     @Autowired
     public AdaptiveRetryService(ErrorClassificationService errorClassificationService,
                                CircuitBreakerService circuitBreakerService,
-                               WorkerHealthService workerHealthService,
+                               WorkerMetricsProvider workerMetricsProvider,
                                RedisTemplate<String, Object> redisTemplate) {
         this.errorClassificationService = errorClassificationService;
         this.circuitBreakerService = circuitBreakerService;
-        this.workerHealthService = workerHealthService;
+        this.workerMetricsProvider = workerMetricsProvider;
         this.redisTemplate = redisTemplate;
         
         loadRetryPatterns();
@@ -350,54 +351,27 @@ public class AdaptiveRetryService {
         }
 
         try {
-            WorkerHealthService.SystemHealthReport healthReport = workerHealthService.getSystemHealthReport();
+            // Calculate system load using available interface methods
+            int activeWorkerCount = workerMetricsProvider.getActiveWorkerCount();
             
-            // Calculate system load based on multiple factors
-            double queueLoad = calculateQueueLoad(healthReport);
-            double workerLoad = calculateWorkerLoad(healthReport);
-            double errorLoad = calculateErrorRateLoad(healthReport);
+            // Simple load calculation based on active workers
+            // If no active workers, system is heavily loaded
+            double workerLoad = activeWorkerCount > 0 ? Math.min(1.0, (double) activeWorkerCount / 10.0) : 1.0;
             
-            // Weighted average of different load indicators
-            currentSystemLoad = (queueLoad * 0.4) + (workerLoad * 0.4) + (errorLoad * 0.2);
+            // Use current load as primary indicator since we don't have full health report
+            currentSystemLoad = Math.min(1.0, workerLoad);
             lastSystemLoadUpdate = Instant.now();
             
             // Store in Redis for other services
             redisTemplate.opsForValue().set(SYSTEM_LOAD_KEY, currentSystemLoad, Duration.ofMinutes(5));
             
-            log.debug("Updated system load: {:.2f} (queue: {:.2f}, worker: {:.2f}, error: {:.2f})",
-                     currentSystemLoad, queueLoad, workerLoad, errorLoad);
+            log.debug("Updated system load: {:.2f} (workers: {})", currentSystemLoad, activeWorkerCount);
                      
         } catch (Exception e) {
             log.warn("Failed to update system load: {}", e.getMessage());
         }
     }
 
-    private double calculateQueueLoad(WorkerHealthService.SystemHealthReport healthReport) {
-        // Implementation would calculate based on queue depths from available queue sizes
-        long audioQueueSize = healthReport.getAudioQueueSize() != null ? healthReport.getAudioQueueSize() : 0L;
-        long textQueueSize = healthReport.getTextQueueSize() != null ? healthReport.getTextQueueSize() : 0L;
-        long totalQueueSize = audioQueueSize + textQueueSize;
-        
-        return Math.min(1.0, totalQueueSize / 100.0); // Normalize to 0-1 scale (100 jobs = full load)
-    }
-
-    private double calculateWorkerLoad(WorkerHealthService.SystemHealthReport healthReport) {
-        // Implementation would calculate based on active workers vs registered capacity
-        int activeWorkers = healthReport.getActiveWorkers();
-        int totalCapacity = Math.max(1, healthReport.getTotalWorkersRegistered()); // Avoid division by zero
-        return Math.min(1.0, (double) activeWorkers / totalCapacity);
-    }
-
-    private double calculateErrorRateLoad(WorkerHealthService.SystemHealthReport healthReport) {
-        // Calculate error rate from available statistics
-        long totalJobs = healthReport.getTotalProcessedJobs() + healthReport.getTotalFailedJobs();
-        if (totalJobs == 0) {
-            return 0.0; // No jobs processed yet
-        }
-        
-        double errorRate = (double) healthReport.getTotalFailedJobs() / totalJobs;
-        return Math.min(1.0, errorRate * 2.0); // Amplify error rate for load calculation (50% error = full load)
-    }
 
     /**
      * Record retry pattern for learning

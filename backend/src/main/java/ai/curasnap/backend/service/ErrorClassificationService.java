@@ -1,5 +1,6 @@
 package ai.curasnap.backend.service;
 
+import ai.curasnap.backend.service.interfaces.WorkerMetricsProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -22,7 +23,7 @@ import java.util.regex.Pattern;
 public class ErrorClassificationService {
 
     private final RedisTemplate<String, Object> redisTemplate;
-    private final WorkerHealthService workerHealthService;
+    private final WorkerMetricsProvider workerMetricsProvider;
     
     // Error pattern cache for performance
     private final Map<String, ErrorCategory> errorPatternCache = new ConcurrentHashMap<>();
@@ -66,9 +67,9 @@ public class ErrorClassificationService {
 
     @Autowired
     public ErrorClassificationService(RedisTemplate<String, Object> redisTemplate, 
-                                    WorkerHealthService workerHealthService) {
+                                    WorkerMetricsProvider workerMetricsProvider) {
         this.redisTemplate = redisTemplate;
-        this.workerHealthService = workerHealthService;
+        this.workerMetricsProvider = workerMetricsProvider;
         log.info("Error Classification Service initialized with {} patterns", ERROR_PATTERNS.size());
     }
 

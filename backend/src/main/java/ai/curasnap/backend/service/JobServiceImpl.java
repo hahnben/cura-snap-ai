@@ -1,6 +1,7 @@
 package ai.curasnap.backend.service;
 
 import ai.curasnap.backend.model.dto.JobData;
+import ai.curasnap.backend.service.interfaces.QueueStatsProvider;
 import ai.curasnap.backend.model.dto.JobRequest;
 import ai.curasnap.backend.model.dto.JobResponse;
 import ai.curasnap.backend.model.dto.JobStatusResponse;
@@ -27,7 +28,7 @@ import java.util.Set;
 @Slf4j
 @Service
 @ConditionalOnProperty(name = "spring.data.redis.enabled", havingValue = "true", matchIfMissing = true)
-public class JobServiceImpl implements JobService {
+public class JobServiceImpl implements JobService, QueueStatsProvider {
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final ObjectMapper objectMapper;

@@ -1,5 +1,7 @@
 package ai.curasnap.backend.service;
 
+import ai.curasnap.backend.service.interfaces.QueueStatsProvider;
+import ai.curasnap.backend.service.interfaces.WorkerMetricsProvider;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -20,10 +22,10 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 @ConditionalOnProperty(name = "app.worker.health.enabled", havingValue = "true", matchIfMissing = true)
-public class WorkerHealthService {
+public class WorkerHealthService implements WorkerMetricsProvider {
 
     private final RedisTemplate<String, Object> redisTemplate;
-    private final JobService jobService;
+    private final QueueStatsProvider queueStatsProvider;
     
     // Redis key prefixes for worker health data
     private static final String WORKER_HEARTBEAT_PREFIX = "worker_heartbeat:";
@@ -41,9 +43,9 @@ public class WorkerHealthService {
     private volatile int activeWorkers = 0;
 
     @Autowired
-    public WorkerHealthService(RedisTemplate<String, Object> redisTemplate, JobService jobService) {
+    public WorkerHealthService(RedisTemplate<String, Object> redisTemplate, QueueStatsProvider queueStatsProvider) {
         this.redisTemplate = redisTemplate;
-        this.jobService = jobService;
+        this.queueStatsProvider = queueStatsProvider;
     }
 
     /**
@@ -176,8 +178,8 @@ public class WorkerHealthService {
             this.activeWorkers = (int) activeWorkerCount;
             
             // Get queue statistics
-            Map<String, Object> audioQueueStats = jobService.getQueueStats("audio_processing");
-            Map<String, Object> textQueueStats = jobService.getQueueStats("text_processing");
+            Map<String, Object> audioQueueStats = queueStatsProvider.getQueueStats("audio_processing");
+            Map<String, Object> textQueueStats = queueStatsProvider.getQueueStats("text_processing");
             
             // Calculate system health score (0-100)
             int healthScore = calculateSystemHealthScore();
@@ -260,6 +262,35 @@ public class WorkerHealthService {
         } catch (Exception e) {
             log.error("Error during health check: {}", e.getMessage(), e);
         }
+    }
+
+    // WorkerMetricsProvider interface implementation
+
+    /**
+     * Check if a specific worker is healthy
+     *
+     * @param workerId unique worker identifier  
+     * @return true if worker is healthy and responsive
+     */
+    @Override
+    public boolean isWorkerHealthy(String workerId) {
+        WorkerHealth workerHealth = workerHealthMap.get(workerId);
+        if (workerHealth == null || workerHealth.getStatus() != WorkerStatus.ACTIVE) {
+            return false;
+        }
+        
+        // Check if heartbeat is recent (within last 2 minutes)
+        return Duration.between(workerHealth.getLastHeartbeat(), Instant.now()).getSeconds() < 120;
+    }
+
+    /**
+     * Get the count of currently active workers
+     *
+     * @return number of active workers
+     */
+    @Override
+    public int getActiveWorkerCount() {
+        return activeWorkers;
     }
 
     // Private helper methods

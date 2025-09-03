@@ -1,5 +1,6 @@
 package ai.curasnap.backend.service;
 
+import ai.curasnap.backend.service.interfaces.WorkerMetricsProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -26,7 +27,7 @@ class ErrorClassificationServiceTest {
     private RedisTemplate<String, Object> redisTemplate;
     
     @Mock
-    private WorkerHealthService workerHealthService;
+    private WorkerMetricsProvider workerMetricsProvider;
     
     @Mock
     private ValueOperations<String, Object> valueOperations;
@@ -38,10 +39,10 @@ class ErrorClassificationServiceTest {
 
     @BeforeEach
     void setUp() {
-        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
-        when(redisTemplate.opsForHash()).thenReturn(hashOperations);
+        lenient().when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        lenient().when(redisTemplate.opsForHash()).thenReturn(hashOperations);
         
-        errorClassificationService = new ErrorClassificationService(redisTemplate, workerHealthService);
+        errorClassificationService = new ErrorClassificationService(redisTemplate, workerMetricsProvider);
     }
 
     @Test

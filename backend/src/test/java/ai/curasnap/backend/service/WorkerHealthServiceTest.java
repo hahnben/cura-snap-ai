@@ -1,10 +1,13 @@
 package ai.curasnap.backend.service;
 
+import ai.curasnap.backend.service.interfaces.QueueStatsProvider;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ValueOperations;
+import org.springframework.data.redis.core.SetOperations;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -22,14 +25,25 @@ class WorkerHealthServiceTest {
     private RedisTemplate<String, Object> redisTemplate;
     
     @Mock
-    private JobService jobService;
+    private QueueStatsProvider queueStatsProvider;
+    
+    @Mock
+    private ValueOperations<String, Object> valueOperations;
+    
+    @Mock  
+    private SetOperations<String, Object> setOperations;
 
     private WorkerHealthService workerHealthService;
 
     @BeforeEach
     void setUp() {
         MockitoAnnotations.openMocks(this);
-        workerHealthService = new WorkerHealthService(redisTemplate, jobService);
+        
+        // Setup Redis template mocking
+        when(redisTemplate.opsForValue()).thenReturn(valueOperations);
+        when(redisTemplate.opsForSet()).thenReturn(setOperations);
+        
+        workerHealthService = new WorkerHealthService(redisTemplate, queueStatsProvider);
     }
 
     @Test
@@ -168,10 +182,10 @@ class WorkerHealthServiceTest {
         String workerId2 = "worker-2";
         String workerType = "audio_processing";
         
-        // Mock JobService queue stats
-        when(jobService.getQueueStats("audio_processing"))
+        // Mock QueueStatsProvider queue stats
+        when(queueStatsProvider.getQueueStats("audio_processing"))
                 .thenReturn(java.util.Map.of("size", 5L));
-        when(jobService.getQueueStats("text_processing"))
+        when(queueStatsProvider.getQueueStats("text_processing"))
                 .thenReturn(java.util.Map.of("size", 2L));
         
         workerHealthService.registerWorker(workerId1, workerType);

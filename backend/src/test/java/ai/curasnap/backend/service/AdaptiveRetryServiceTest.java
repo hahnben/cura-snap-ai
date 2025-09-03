@@ -1,6 +1,7 @@
 package ai.curasnap.backend.service;
 
 import ai.curasnap.backend.model.dto.JobData;
+import ai.curasnap.backend.service.interfaces.WorkerMetricsProvider;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -30,7 +31,7 @@ class AdaptiveRetryServiceTest {
     private CircuitBreakerService circuitBreakerService;
     
     @Mock
-    private WorkerHealthService workerHealthService;
+    private WorkerMetricsProvider workerMetricsProvider;
     
     @Mock
     private RedisTemplate<String, Object> redisTemplate;
@@ -46,7 +47,7 @@ class AdaptiveRetryServiceTest {
         adaptiveRetryService = new AdaptiveRetryService(
             errorClassificationService, 
             circuitBreakerService, 
-            workerHealthService, 
+            workerMetricsProvider, 
             redisTemplate
         );
     }
