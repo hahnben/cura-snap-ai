@@ -3,6 +3,7 @@ package ai.curasnap.backend.config;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -68,11 +69,13 @@ public class RedisConfig {
         
         // Use JSON serializer for values with SECURE configuration
         ObjectMapper objectMapper = new ObjectMapper();
+        // Enable Java 8 Time API support
+        objectMapper.registerModule(new JavaTimeModule());
         // SECURITY: Use secure serialization without default typing to prevent RCE
         // objectMapper.activateDefaultTyping() REMOVED - potential security vulnerability
         
         GenericJackson2JsonRedisSerializer jsonSerializer = 
-            new GenericJackson2JsonRedisSerializer();
+            new GenericJackson2JsonRedisSerializer(objectMapper);
         
         template.setValueSerializer(jsonSerializer);
         template.setHashValueSerializer(jsonSerializer);
