@@ -1,6 +1,7 @@
 package ai.curasnap.backend.service;
 
 import ai.curasnap.backend.model.dto.JobData;
+import ai.curasnap.backend.service.interfaces.WorkerMetricsProvider;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -33,7 +34,7 @@ public class DeadLetterQueueService {
     private final RedisTemplate<String, Object> redisTemplate;
     private final ErrorClassificationService errorClassificationService;
     private final CircuitBreakerService circuitBreakerService;
-    private final WorkerHealthService workerHealthService;
+    private final WorkerMetricsProvider workerMetricsProvider;
 
     // Redis keys for DLQ management
     private static final String DLQ_KEY_PREFIX = "dlq:";
@@ -51,11 +52,11 @@ public class DeadLetterQueueService {
     public DeadLetterQueueService(RedisTemplate<String, Object> redisTemplate,
                                  ErrorClassificationService errorClassificationService,
                                  CircuitBreakerService circuitBreakerService,
-                                 WorkerHealthService workerHealthService) {
+                                 WorkerMetricsProvider workerMetricsProvider) {
         this.redisTemplate = redisTemplate;
         this.errorClassificationService = errorClassificationService;
         this.circuitBreakerService = circuitBreakerService;
-        this.workerHealthService = workerHealthService;
+        this.workerMetricsProvider = workerMetricsProvider;
         
         log.info("Enhanced DeadLetterQueueService initialized with intelligent failure management");
     }
