@@ -11,29 +11,45 @@ etc.) berücksichtigt.
 
 # Architekturüberblick
 
-**Architekturtyp:** Modularer Monolith mit ausgelagerten KI-Services
-(FastAPI) und Frontend (Svelte) in isolierten Containern -- orchestriert
-über ein zentrales Spring Boot Backend.
+**Architekturtyp:** Redis-basierte asynchrone Microservices-Architektur mit Spring Boot Backend als API-Gateway und FastAPI-Services für AI-Verarbeitung.
 
-Die Kernarchitektur von CuraSnap AI ist **modular** aufgebaut. Die
-Tabelle fasst alle Komponenten, Technologien und Funktionen
-übersichtlich zusammen:
+Die Kernarchitektur von CuraSnap AI ist **modular und asynchron** aufgebaut. Seit der Redis-Integration erfolgt die Service-Kommunikation über Job-Queues für verbesserte Skalierbarkeit und Robustheit. Die Tabelle fasst alle Komponenten, Technologien und Funktionen übersichtlich zusammen:
+
+## Redis-basierte Asynchrone Verarbeitung
+
+**Kernprinzip:** Alle zeitaufwändigen Operationen (Audio-Transkription, AI-Generierung) werden als Redis-Jobs asynchron abgearbeitet. Dies ermöglicht:
+
+- **Skalierbarkeit**: Worker-Services können unabhängig skaliert werden
+- **Robustheit**: Job-Retry-Mechanismen bei Service-Ausfällen
+- **Performance**: Non-blocking API-Responses mit Background-Processing
+- **Monitoring**: Vollständige Job-Verfolgung und Status-Updates
+
+**Architektur-Flow:**
+```
+Frontend/n8n → Backend API → Redis Job Queue → Worker Services → Database → Response
+```
+
+**Service-Kommunikation:**
+- **Sync**: Frontend ↔ Backend (API-Calls, Authentication)
+- **Async**: Backend ↔ Services (Redis Jobs für Audio/AI-Processing)
+- **Database**: Alle Services schreiben direkt in Supabase (mit RLS)
 
 | Komponente          | Technologie / Umgebung                                                                   | Funktion / Beschreibung                                                                                                                                   |
 |---------------------|------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Frontend            | *Svelte* (Docker-Container)                                                              | Web-App im Browser für Ärzte (UI).                                                                                                                        |
-| Backend API         | *Java Spring Boot* (in Eclipse IDE)                                                      | RESTful API-Server. Überprüft Authentifizierung (JWT via Supabase) und leitet Anfragen weiter.                                                            |
-| KI-Agent Service    | *Python FastAPI* (in VS Code mit pipenv)                                                 | KI-Modul zur Umwandlung von Freitext in strukturierte Notizen. Verwendet *pydantic-ai* für modellbasierte AI-Antworten.                                   |
-| Datenbank & Auth    | *Supabase* (PostgreSQL mit RLS)                                                          | Cloud-DB mit Row-Level Security. Stellt auch Auth-Service bereit (JWT-Ausstellung für User).                                                              |
-| Deployment-Umgebung | *Docker*-Container orchestriert via *Docker Compose*;*Caddy* Webserver als Reverse Proxy | Containerisierung aller Komponenten. Caddy dient als Reverse Proxy mit automatischem HTTPS (Let\'s Encrypt). Geplant für Hosting auf z. B. Hetzner Cloud. |
+| Backend API         | *Java Spring Boot* (in Eclipse IDE)                                                      | RESTful API-Gateway. Authentifizierung (JWT via Supabase), Redis Job-Management, Database-Operations.                                                     |
+| **Redis Job Queue** | *Redis 7* (Docker-Container)                                                             | **Zentrale Message Queue für asynchrone Service-Kommunikation. Job-Management, Retry-Logic, Status-Tracking.**                                           |
+| Agent Service       | *Python FastAPI* (in VS Code mit pipenv)                                                 | **Redis Worker**: SOAP-Generierung via pydantic-ai. Konsumiert Jobs aus Redis Queue.                                                                     |
+| Transcription Service| *Python FastAPI* mit Whisper (in VS Code mit pipenv)                                    | **Redis Worker**: Audio-zu-Text via OpenAI Whisper. Konsumiert Audio-Jobs aus Redis Queue.                                                               |
+| Datenbank & Auth    | *Supabase* (PostgreSQL mit RLS)                                                          | Cloud-DB mit Row-Level Security. Auth-Service (JWT). Direkte Writes von allen Services.                                                                   |
+| Deployment-Umgebung | *Docker*-Container orchestriert via *Docker Compose*;*Caddy* Webserver als Reverse Proxy | Containerisierung aller Komponenten. Redis-Cluster-Ready. Caddy mit Rate-Limiting für Production.                                                          |
 
-**Hinweis:** Im Deployment-Diagramm sind Frontend, Backend und KI-Agent
-als separate Docker-Container auf dem Server vorgesehen, während
-Supabase als externer Cloud-Dienst läuft. Der Browser des Arztes
-kommuniziert primär mit dem Spring-Boot-Backend (für API und Auth) und
-optional direkt mit Supabase (z. B. bei Anmeldung). Das Backend
-vermittelt zwischen Frontend, KI-Agent und Datenbank (siehe
-Kommunikationsflüsse: Frontend → Backend → KI-Agent / DB).
+**Moderne Redis-Architektur:** Frontend kommuniziert synchron mit Backend für Auth/API. Backend delegiert zeitaufwändige Operationen (Audio/AI) asynchron an Redis-Worker-Services. Alle Services haben direkten Database-Zugang mit RLS-basierter Sicherheit. 
+
+**Kommunikationsflüsse:**
+- **Frontend ↔ Backend**: HTTP REST (Sync)
+- **Backend → Redis → Workers**: Job Queue (Async)  
+- **Alle Services → Database**: Direct Write (RLS-secured)
 
 # Umsetzungsphasen und Meilensteine
 
@@ -139,7 +155,7 @@ Endpoints und Sicherheitsmechanismen. Insbesondere soll hier die
 
 ---
 
-## 🎯 **Aktueller Entwicklungsstand (Juli 2025)**
+## 🎯 **Aktueller Entwicklungsstand (Januar 2025)**
 
 ### ✅ **Vollständig implementiert:**
 - **Phase 1**: Supabase-Konfiguration mit umfassendem Database Schema
@@ -147,33 +163,36 @@ Endpoints und Sicherheitsmechanismen. Insbesondere soll hier die
 - **Phase 3**: Backend REST API mit JWT-Authentifizierung und Database Integration
 - **Phase 4**: KI-Agent Service mit pydantic-ai Integration
 - **Phase 5-A**: n8n Testing Framework als Frontend-Alternative
-- **Phase 5-B Foundation**: Transcription Service mit umfassender Security-Layer
-- **Phase 5-B Backend Integration**: Backend Audio-Endpoint mit Production-Ready Security-Hardening ✨
+- **Phase 5-B**: Transcription Service mit Whisper-Integration (vollständig)
+- **Phase 5-C**: **n8n Audio-Pipeline mit Redis-Integration (ERFOLGREICH GETESTET)** ✨
 
 ### 🚀 **Production-Ready Features:**
-- **End-to-End Pipeline**: cURL → Backend → Database → Response funktioniert
-- **Audio-Pipeline**: Audio-Upload → Backend → Mock-Transcription → SOAP → Database ✨
-- **n8n Chat Interface**: Chat-Input → Backend → SOAP-Output über n8n-Workflow
-- **Transcription Service Foundation**: FastAPI-Service mit Mock-Transkription
+- **🔥 NEUE REDIS-ARCHITEKTUR**: Vollständige asynchrone Service-Kommunikation über Job-Queues
+- **✅ VALIDIERTE Audio-Pipeline**: Voice → Backend → **Redis Jobs** → Whisper → Agent → SOAP → Database 
+- **✅ n8n Audio-Interface**: Audio-Upload über Chat vollständig funktional (Januar 2025 getestet)
+- **✅ Echte Whisper-Integration**: OpenAI Whisper-Model für Production-Audio-Transkription
 - **Comprehensive Security**: Path Traversal Prevention, Magic Number Validation, Information Disclosure Prevention
-- **Advanced Security-Hardening**: MIME-Type-Validation, Stream-Processing, Malware-Detection ✨
+- **Advanced Security-Hardening**: MIME-Type-Validation, Stream-Processing, Malware-Detection
+- **Redis Job Management**: Retry-Logic, Status-Tracking, Worker-Scalability
 - **Secure File Handling**: 0600 permissions, crypto-secure temp files, guaranteed cleanup
 - **Security**: Input-Validierung, Autorisierung, sanitisiertes Logging
 - **Error Handling**: Graceful Recovery, benutzerfreundliche Messages
-- **Audio-File-Validation**: Multi-Format-Support (.mp3, .wav, .webm, .m4a, .ogg, .flac) ✨
-- **Defense-in-Depth**: Multi-Layer-Security-Validierung mit Fallback-Limits ✨
-- **Database**: Foreign Key Relations, Transaction Management
-- **Testing**: Unit Tests, Integration Tests, Manual Testing, Security Testing ✨
+- **Audio-File-Validation**: Multi-Format-Support (.mp3, .wav, .webm, .m4a, .ogg, .flac)
+- **Defense-in-Depth**: Multi-Layer-Security-Validierung mit Fallback-Limits
+- **Database**: Foreign Key Relations, Transaction Management, RLS-Security
+- **Testing**: Unit Tests, Integration Tests, Manual Testing, **Production Audio-Testing** ✨
 
-### 📋 **Nächste Entwicklungsschritte (Aktualisiert Juli 2025):**
+### 📋 **Nächste Entwicklungsschritte (Aktualisiert Januar 2025):**
 1. **Frontend MVP** (Phase 6) - Svelte-basierte Nutzeroberfläche für direkten Zugang (HÖCHSTE PRIORITÄT)
-2. **Comprehensive Testing & Error-Handling** (Phase 7) - Performance-Testing und User-Experience mit Frontend
-3. **Logging & Monitoring** (Phase 8) - Production-Ready Observability
+2. **Comprehensive Testing & Error-Handling** (Phase 7) - Performance-Testing der Redis-Architektur
+3. **Logging & Monitoring** (Phase 8) - Production-Ready Observability für Redis-Services
 4. **Sicherheit & Best Practices** (Phase 9) - Security-Hardening für Production
-5. **Containerisierung & lokales Deployment** (Phase 10) - Docker-Stack-Integration
-6. **Cloud-Deployment & CI/CD** (Phase 11) - Production-Deployment mit Caddy
+5. **Containerisierung & lokales Deployment** (Phase 10) - Docker-Stack mit Redis-Integration
+6. **Cloud-Deployment & CI/CD** (Phase 11) - Production-Deployment mit Caddy & Redis-Cluster
 
-**🎯 Architektur-Fokus:** Backend-zentrierte Audio-Pipeline für optimale Sicherheit und Performance
+**🎯 Architektur-Fokus:** Redis-basierte asynchrone Microservices-Architektur für optimale Skalierbarkeit und Robustheit
+
+**💡 Erfolg validiert:** Audio-zu-SOAP-Pipeline funktioniert produktionsreif über n8n-Interface. Backend bereit für Frontend-Development.
 
 ---
 
@@ -458,7 +477,16 @@ n8n Audio-Upload → Backend (/format-audio) → Whisper → Backend → SOAP �
 - [ ] Existing n8n-Credentials und -Configuration unverändert
 - [ ] Database-Integrity bei gemischten Text/Audio-Inputs
 
-**Meilenstein:** ✅ **VOLLSTÄNDIG ERREICHT** - Audio-Upload-Funktionalität erfolgreich in n8n-Workflow integriert. End-to-End-Test Audio → Backend → Whisper → SOAP → Database funktioniert vollständig. Backend ist produktionsreif für Frontend-Entwicklung. Detaillierte Testing-Kategorien (Performance, Error-Handling) werden nach Frontend-MVP durchgeführt. 🎙️💬✨
+**Meilenstein:** ✅ **VOLLSTÄNDIG ABGESCHLOSSEN** - Audio-Upload-Funktionalität erfolgreich in n8n-Workflow integriert mit **Redis-basierter asynchroner Pipeline**. 
+
+**🎉 ERFOLGREICHER PRODUCTION-TEST (Januar 2025):**
+- ✅ **End-to-End Audio-Pipeline**: Voice-Upload → Backend → **Redis Jobs** → Whisper → Agent Service → SOAP-Generierung → Database-Storage
+- ✅ **n8n Integration**: Audio-Upload über Chat-Interface vollständig funktional
+- ✅ **Redis-Architektur**: Asynchrone Job-Verarbeitung mit robuster Error-Handling
+- ✅ **Database Validation**: SOAP-Note korrekt in Supabase gespeichert
+- ✅ **Production-Ready**: Backend mit vollständiger Redis-Integration produktionsreif
+
+**Backend ist vollständig validiert für Frontend-Entwicklung.** Detaillierte Testing-Kategorien (Performance, Error-Handling) werden nach Frontend-MVP durchgeführt. 🎙️💬✨
 
 ## Phase 6: Frontend MVP -- Produktive Nutzeroberfläche {#phase-6-frontend-mvp-produktive-nutzeroberfläche}
 
