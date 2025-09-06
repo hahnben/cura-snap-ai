@@ -1,42 +1,159 @@
+/* CuraSnap AI Medical Application Styles */
+
 #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+  height: 100vh;
+  width: 100vw;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+/* Medical-specific color variables */
+:root {
+  --medical-primary: #1976d2;
+  --medical-primary-light: #42a5f5;
+  --medical-primary-dark: #1565c0;
+  --medical-secondary: #4caf50;
+  --medical-background: #fafafa;
+  --medical-paper: #ffffff;
+  --medical-text-primary: #212121;
+  --medical-text-secondary: #757575;
+  --medical-divider: #e0e0e0;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+/* Accessibility improvements */
+*:focus-visible {
+  outline: 2px solid var(--medical-primary);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Skip link for screen readers */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 6px;
+  background: var(--medical-primary);
+  color: white;
+  padding: 8px;
+  text-decoration: none;
+  border-radius: 4px;
+  z-index: 9999;
+  font-size: 14px;
+}
+
+.skip-link:focus {
+  top: 6px;
+}
+
+/* Loading animations */
+@keyframes pulse {
+  0% {
+    opacity: 1;
   }
-  to {
-    transform: rotate(360deg);
+  50% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 1;
   }
 }
 
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+.loading-pulse {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Recording pulse animation */
+@keyframes recording-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(244, 67, 54, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(244, 67, 54, 0);
   }
 }
 
-.card {
-  padding: 2em;
+.recording-animation {
+  animation: recording-pulse 2s infinite;
 }
 
-.read-the-docs {
-  color: #888;
+/* Smooth transitions for better UX */
+* {
+  transition-property: color, background-color, border-color, opacity, transform;
+  transition-duration: 0.2s;
+  transition-timing-function: ease-in-out;
+}
+
+/* Remove transitions for users who prefer reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --medical-primary: #0052cc;
+    --medical-text-primary: #000000;
+    --medical-text-secondary: #333333;
+    --medical-divider: #666666;
+  }
+}
+
+/* Print styles for SOAP notes */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  
+  .print-break {
+    page-break-before: always;
+  }
+  
+  body {
+    font-size: 12pt;
+    line-height: 1.4;
+    color: black;
+    background: white;
+  }
+  
+  .soap-section {
+    margin-bottom: 20pt;
+    page-break-inside: avoid;
+  }
+}
+
+/* Utility classes */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
 }
