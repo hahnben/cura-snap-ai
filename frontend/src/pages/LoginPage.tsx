@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   Box,
   Card,
@@ -7,151 +6,194 @@ import {
   TextField,
   Button,
   Typography,
+  CircularProgress,
   Alert,
   Stack,
-  InputAdornment,
 } from '@mui/material';
-import { Email, Login as LoginIcon } from '@mui/icons-material';
+import { Email, Login } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
+import { useError } from '../contexts/ErrorContext';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
-  const { signInWithEmail } = useAuth();
-  const navigate = useNavigate();
+  const [loading, setLoading] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const { signIn } = useAuth();
+  const { showError } = useError();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!email.trim()) {
-      setMessage({ text: 'Please enter your email address', type: 'error' });
+      showError('Bitte geben Sie eine E-Mail-Adresse ein.');
       return;
     }
 
-    setIsLoading(true);
-    setMessage(null);
-    
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      showError('Bitte geben Sie eine gültige E-Mail-Adresse ein.');
+      return;
+    }
+
+    setLoading(true);
     try {
-      const { error } = await signInWithEmail(email.trim());
+      const { error } = await signIn(email);
       
       if (error) {
-        setMessage({ 
-          text: error.message || 'Failed to send magic link', 
-          type: 'error' 
-        });
+        showError(`Anmeldung fehlgeschlagen: ${error.message}`);
       } else {
-        setMessage({
-          text: 'Magic link sent! Check your email and click the link to sign in.',
-          type: 'success'
-        });
+        setEmailSent(true);
+        showError(
+          'Ein Magic Link wurde an Ihre E-Mail-Adresse gesendet. Bitte überprüfen Sie Ihr Postfach.',
+          'success'
+        );
       }
-    } catch (error) {
-      setMessage({ 
-        text: 'An unexpected error occurred. Please try again.', 
-        type: 'error' 
-      });
+    } catch (err) {
+      showError('Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es erneut.');
+      console.error('Login error:', err);
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
     <Box
-      display="flex"
-      justifyContent="center"
-      alignItems="center"
-      minHeight="100vh"
-      bgcolor="background.default"
-      p={3}
+      sx={{
+        minHeight: '100vh',
+        bgcolor: 'background.default',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        p: 3,
+      }}
     >
-      <Card
-        elevation={3}
-        sx={{
-          maxWidth: 400,
+      <Card 
+        elevation={3} 
+        sx={{ 
+          maxWidth: 400, 
           width: '100%',
-          p: 2,
+          borderRadius: 2,
         }}
       >
-        <CardContent>
+        <CardContent sx={{ p: 4 }}>
           <Stack spacing={3} alignItems="center">
+            {/* Header */}
             <Box textAlign="center">
-              <Typography
-                variant="h4"
-                component="h1"
-                color="primary"
+              <Typography 
+                variant="h4" 
+                component="h1" 
+                color="primary" 
                 gutterBottom
                 sx={{ fontWeight: 600 }}
               >
                 CuraSnap AI
               </Typography>
-              <Typography
-                variant="subtitle1"
+              <Typography 
+                variant="h6" 
                 color="text.secondary"
+                gutterBottom
               >
                 SOAP Note Assistant
               </Typography>
+              <Typography 
+                variant="body2" 
+                color="text.secondary"
+              >
+                Sichere Anmeldung für medizinische Fachkräfte
+              </Typography>
             </Box>
 
-            <Box component="form" onSubmit={handleSubmit} width="100%">
+            {/* Success Message */}
+            {emailSent && (
+              <Alert severity="success" sx={{ width: '100%' }}>
+                <Typography variant="body2">
+                  <strong>E-Mail gesendet!</strong><br />
+                  Klicken Sie auf den Link in Ihrer E-Mail, um sich anzumelden.
+                  Der Link ist 1 Stunde gültig.
+                </Typography>
+              </Alert>
+            )}
+
+            {/* Login Form */}
+            <Box
+              component="form"
+              onSubmit={handleSubmit}
+              sx={{ width: '100%' }}
+            >
               <Stack spacing={3}>
                 <TextField
                   fullWidth
-                  label="Email Address"
+                  label="E-Mail-Adresse"
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  disabled={loading || emailSent}
                   required
-                  autoFocus
-                  autoComplete="email"
-                  disabled={isLoading}
                   InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Email color="action" />
-                      </InputAdornment>
-                    ),
+                    startAdornment: <Email sx={{ mr: 1, color: 'text.secondary' }} />,
                   }}
-                  aria-label="Enter your email address"
+                  sx={{
+                    '& .MuiOutlinedInput-root': {
+                      borderRadius: 2,
+                    },
+                  }}
+                  placeholder="ihre.email@klinik.de"
                 />
-
-                {message && (
-                  <Alert 
-                    severity={message.type}
-                    sx={{ borderRadius: 2 }}
-                    role="alert"
-                    aria-live="polite"
-                  >
-                    {message.text}
-                  </Alert>
-                )}
 
                 <Button
                   type="submit"
-                  fullWidth
                   variant="contained"
                   size="large"
-                  disabled={isLoading}
-                  startIcon={<LoginIcon />}
+                  fullWidth
+                  disabled={loading || emailSent}
+                  startIcon={
+                    loading ? (
+                      <CircularProgress size={16} color="inherit" />
+                    ) : (
+                      <Login />
+                    )
+                  }
                   sx={{
                     py: 1.5,
-                    fontWeight: 500,
+                    borderRadius: 2,
+                    textTransform: 'none',
+                    fontSize: '1rem',
                   }}
-                  aria-label="Send magic link to email"
                 >
-                  {isLoading ? 'Sending...' : 'Send Magic Link'}
+                  {loading 
+                    ? 'Magic Link wird gesendet...' 
+                    : emailSent 
+                      ? 'E-Mail gesendet'
+                      : 'Magic Link senden'
+                  }
                 </Button>
               </Stack>
             </Box>
 
-            <Typography
-              variant="caption"
-              color="text.secondary"
-              textAlign="center"
-              sx={{ mt: 2 }}
-            >
-              We'll send you a secure link to sign in without a password.
-            </Typography>
+            {/* Info */}
+            <Box sx={{ textAlign: 'center', mt: 2 }}>
+              <Typography variant="caption" color="text.secondary">
+                <strong>Sicherheitshinweis:</strong><br />
+                • Keine Passwörter erforderlich<br />
+                • HIPAA-konforme Authentifizierung<br />
+                • Automatische 30-Minuten Session-Timeout
+              </Typography>
+            </Box>
+
+            {/* Resend Link */}
+            {emailSent && (
+              <Button
+                variant="text"
+                size="small"
+                onClick={() => {
+                  setEmailSent(false);
+                  setEmail('');
+                }}
+                sx={{ textTransform: 'none' }}
+              >
+                Mit anderer E-Mail-Adresse anmelden
+              </Button>
+            )}
           </Stack>
         </CardContent>
       </Card>

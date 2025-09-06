@@ -1,1 +1,147 @@
-import { apiClient } from './api.client';\nimport { Message, SOAPNote, AudioRecording } from '../types/session';\nimport { v4 as uuidv4 } from 'uuid';\n\ninterface ProcessAudioResponse {\n  message: Message;\n  soapNote: SOAPNote;\n  audioRecording: AudioRecording;\n}\n\ninterface GenerateSOAPResponse {\n  soapNote: SOAPNote;\n}\n\nclass RecordingService {\n  private readonly basePath = '/api/recordings';\n\n  async processAudio(sessionId: string, audioBlob: Blob): Promise<{ message: Message; soapNote: SOAPNote }> {\n    try {\n      const response = await apiClient.uploadFile<ProcessAudioResponse>(\n        `${this.basePath}/process`,\n        audioBlob,\n        `recording-${Date.now()}.webm`,\n        { sessionId }\n      );\n      \n      return {\n        message: response.message,\n        soapNote: response.soapNote,\n      };\n    } catch (error) {\n      console.error('Failed to process audio:', error);\n      \n      // In development or fallback mode, create mock responses\n      if (import.meta.env.DEV) {\n        const mockMessage: Message = {\n          id: uuidv4(),\n          sessionId,\n          content: '[Audio recording processed - Mock transcription for development]',\n          type: 'user',\n          source: 'audio',\n          createdAt: new Date().toISOString(),\n        };\n        \n        const mockSOAP: SOAPNote = {\n          id: uuidv4(),\n          sessionId,\n          subjective: 'Patient reports chief complaint and symptoms (Mock data for development)',\n          objective: 'Clinical findings and vital signs (Mock data for development)',\n          assessment: 'Medical assessment and diagnosis (Mock data for development)',\n          plan: 'Treatment plan and follow-up (Mock data for development)',\n          createdAt: new Date().toISOString(),\n          updatedAt: new Date().toISOString(),\n        };\n        \n        return {\n          message: mockMessage,\n          soapNote: mockSOAP,\n        };\n      }\n      \n      throw error;\n    }\n  }\n\n  async generateSOAP(sessionId: string): Promise<SOAPNote> {\n    try {\n      const response = await apiClient.post<GenerateSOAPResponse>(\n        `/api/sessions/${sessionId}/soap`,\n        {}\n      );\n      \n      return response.soapNote;\n    } catch (error) {\n      console.error('Failed to generate SOAP note:', error);\n      \n      // In development or fallback mode, create mock SOAP note\n      if (import.meta.env.DEV) {\n        const mockSOAP: SOAPNote = {\n          id: uuidv4(),\n          sessionId,\n          subjective: 'Patient reports chief complaint and symptoms (Regenerated mock data)',\n          objective: 'Clinical findings and vital signs (Regenerated mock data)',\n          assessment: 'Medical assessment and diagnosis (Regenerated mock data)',\n          plan: 'Treatment plan and follow-up (Regenerated mock data)',\n          createdAt: new Date().toISOString(),\n          updatedAt: new Date().toISOString(),\n        };\n        \n        return mockSOAP;\n      }\n      \n      throw error;\n    }\n  }\n\n  async transcribeAudio(audioBlob: Blob): Promise<string> {\n    try {\n      const response = await apiClient.uploadFile<{ transcription: string }>(\n        '/api/transcription/transcribe',\n        audioBlob,\n        `audio-${Date.now()}.webm`\n      );\n      \n      return response.transcription;\n    } catch (error) {\n      console.error('Failed to transcribe audio:', error);\n      \n      // Fallback transcription in development\n      if (import.meta.env.DEV) {\n        return '[Mock transcription for development - audio transcription not available]';\n      }\n      \n      throw error;\n    }\n  }\n\n  async getRecording(recordingId: string): Promise<AudioRecording> {\n    try {\n      return await apiClient.get<AudioRecording>(`${this.basePath}/${recordingId}`);\n    } catch (error) {\n      console.error('Failed to get recording:', error);\n      throw error;\n    }\n  }\n\n  async getSessionRecordings(sessionId: string): Promise<AudioRecording[]> {\n    try {\n      return await apiClient.get<AudioRecording[]>(`/api/sessions/${sessionId}/recordings`);\n    } catch (error) {\n      console.error('Failed to get session recordings:', error);\n      throw error;\n    }\n  }\n\n  async deleteRecording(recordingId: string): Promise<void> {\n    try {\n      await apiClient.delete(`${this.basePath}/${recordingId}`);\n    } catch (error) {\n      console.error('Failed to delete recording:', error);\n      throw error;\n    }\n  }\n}\n\nexport const recordingService = new RecordingService();\nexport default recordingService;"
+import { apiClient } from './api.client';
+import { Message, SOAPNote, AudioRecording } from '../types/session';
+import { v4 as uuidv4 } from 'uuid';
+
+interface ProcessAudioResponse {
+  message: Message;
+  soapNote: SOAPNote;
+  audioRecording: AudioRecording;
+}
+
+interface GenerateSOAPResponse {
+  soapNote: SOAPNote;
+}
+
+class RecordingService {
+  private readonly basePath = '/api/recordings';
+
+  async processAudio(sessionId: string, audioBlob: Blob): Promise<{ message: Message; soapNote: SOAPNote }> {
+    try {
+      const response = await apiClient.uploadFile<ProcessAudioResponse>(
+        `${this.basePath}/process`,
+        audioBlob,
+        `recording-${Date.now()}.webm`,
+        { sessionId }
+      );
+      
+      return {
+        message: response.message,
+        soapNote: response.soapNote,
+      };
+    } catch (error) {
+      console.error('Failed to process audio:', error);
+      
+      // In development or fallback mode, create mock responses
+      if (import.meta.env.DEV) {
+        const mockMessage: Message = {
+          id: uuidv4(),
+          sessionId,
+          content: '[Audio recording processed - Mock transcription for development]',
+          type: 'user',
+          source: 'audio',
+          createdAt: new Date().toISOString(),
+        };
+        
+        const mockSOAP: SOAPNote = {
+          id: uuidv4(),
+          sessionId,
+          subjective: 'Patient reports chief complaint and symptoms (Mock data for development)',
+          objective: 'Clinical findings and vital signs (Mock data for development)',
+          assessment: 'Medical assessment and diagnosis (Mock data for development)',
+          plan: 'Treatment plan and follow-up (Mock data for development)',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        return {
+          message: mockMessage,
+          soapNote: mockSOAP,
+        };
+      }
+      
+      throw error;
+    }
+  }
+
+  async generateSOAP(sessionId: string): Promise<SOAPNote> {
+    try {
+      const response = await apiClient.post<GenerateSOAPResponse>(
+        `/api/sessions/${sessionId}/soap`,
+        {}
+      );
+      
+      return response.soapNote;
+    } catch (error) {
+      console.error('Failed to generate SOAP note:', error);
+      
+      // In development or fallback mode, create mock SOAP note
+      if (import.meta.env.DEV) {
+        const mockSOAP: SOAPNote = {
+          id: uuidv4(),
+          sessionId,
+          subjective: 'Patient reports chief complaint and symptoms (Regenerated mock data)',
+          objective: 'Clinical findings and vital signs (Regenerated mock data)',
+          assessment: 'Medical assessment and diagnosis (Regenerated mock data)',
+          plan: 'Treatment plan and follow-up (Regenerated mock data)',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        
+        return mockSOAP;
+      }
+      
+      throw error;
+    }
+  }
+
+  async transcribeAudio(audioBlob: Blob): Promise<string> {
+    try {
+      const response = await apiClient.uploadFile<{ transcription: string }>(
+        '/api/transcription/transcribe',
+        audioBlob,
+        `audio-${Date.now()}.webm`
+      );
+      
+      return response.transcription;
+    } catch (error) {
+      console.error('Failed to transcribe audio:', error);
+      
+      // Fallback transcription in development
+      if (import.meta.env.DEV) {
+        return '[Mock transcription for development - audio transcription not available]';
+      }
+      
+      throw error;
+    }
+  }
+
+  async getRecording(recordingId: string): Promise<AudioRecording> {
+    try {
+      return await apiClient.get<AudioRecording>(`${this.basePath}/${recordingId}`);
+    } catch (error) {
+      console.error('Failed to get recording:', error);
+      throw error;
+    }
+  }
+
+  async getSessionRecordings(sessionId: string): Promise<AudioRecording[]> {
+    try {
+      return await apiClient.get<AudioRecording[]>(`/api/sessions/${sessionId}/recordings`);
+    } catch (error) {
+      console.error('Failed to get session recordings:', error);
+      throw error;
+    }
+  }
+
+  async deleteRecording(recordingId: string): Promise<void> {
+    try {
+      await apiClient.delete(`${this.basePath}/${recordingId}`);
+    } catch (error) {
+      console.error('Failed to delete recording:', error);
+      throw error;
+    }
+  }
+}
+
+export const recordingService = new RecordingService();
+export default recordingService;

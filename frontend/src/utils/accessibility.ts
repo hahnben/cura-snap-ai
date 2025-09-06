@@ -1,1 +1,225 @@
-// Accessibility utilities for WCAG AA compliance\n\n/**\n * Checks if a color meets WCAG AA contrast ratio requirements\n * @param foreground - The foreground color in hex format\n * @param background - The background color in hex format\n * @returns Object with contrast ratio and compliance status\n */\nexport function checkContrastRatio(foreground: string, background: string) {\n  const getLuminance = (color: string): number => {\n    const rgb = hexToRgb(color);\n    if (!rgb) return 0;\n    \n    const { r, g, b } = rgb;\n    \n    const [rs, gs, bs] = [r, g, b].map(c => {\n      c = c / 255;\n      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);\n    });\n    \n    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;\n  };\n  \n  const l1 = getLuminance(foreground);\n  const l2 = getLuminance(background);\n  \n  const contrast = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);\n  \n  return {\n    ratio: Math.round(contrast * 100) / 100,\n    passAA: contrast >= 4.5,\n    passAALarge: contrast >= 3,\n    passAAA: contrast >= 7,\n  };\n}\n\n/**\n * Converts hex color to RGB\n */\nfunction hexToRgb(hex: string): { r: number; g: number; b: number } | null {\n  const result = /^#?([a-f\\d]{2})([a-f\\d]{2})([a-f\\d]{2})$/i.exec(hex);\n  return result\n    ? {\n        r: parseInt(result[1], 16),\n        g: parseInt(result[2], 16),\n        b: parseInt(result[3], 16),\n      }\n    : null;\n}\n\n/**\n * Generates a unique ID for form elements\n */\nexport function generateId(prefix: string = 'id'): string {\n  return `${prefix}-${Math.random().toString(36).substr(2, 9)}`;\n}\n\n/**\n * Checks if an element is visible to screen readers\n */\nexport function isVisibleToScreenReaders(element: HTMLElement): boolean {\n  const style = window.getComputedStyle(element);\n  \n  return !(\n    style.display === 'none' ||\n    style.visibility === 'hidden' ||\n    style.opacity === '0' ||\n    element.hasAttribute('aria-hidden') ||\n    element.hidden\n  );\n}\n\n/**\n * Announces text to screen readers using aria-live\n */\nexport function announceToScreenReader(\n  message: string,\n  priority: 'polite' | 'assertive' = 'polite'\n): void {\n  const announcer = document.createElement('div');\n  announcer.setAttribute('aria-live', priority);\n  announcer.setAttribute('aria-atomic', 'true');\n  announcer.className = 'sr-only';\n  announcer.textContent = message;\n  \n  document.body.appendChild(announcer);\n  \n  // Remove after announcement\n  setTimeout(() => {\n    document.body.removeChild(announcer);\n  }, 1000);\n}\n\n/**\n * Creates proper ARIA labels for complex UI elements\n */\nexport function createAriaLabel(\n  baseLabel: string,\n  state?: string,\n  description?: string\n): string {\n  let label = baseLabel;\n  \n  if (state) {\n    label += `, ${state}`;\n  }\n  \n  if (description) {\n    label += `. ${description}`;\n  }\n  \n  return label;\n}\n\n/**\n * Validates form accessibility\n */\nexport function validateFormAccessibility(form: HTMLFormElement): {\n  valid: boolean;\n  issues: string[];\n} {\n  const issues: string[] = [];\n  const inputs = form.querySelectorAll('input, textarea, select');\n  \n  inputs.forEach((input) => {\n    const element = input as HTMLInputElement;\n    \n    // Check for labels\n    const label = form.querySelector(`label[for=\"${element.id}\"]`);\n    const ariaLabel = element.getAttribute('aria-label');\n    const ariaLabelledBy = element.getAttribute('aria-labelledby');\n    \n    if (!label && !ariaLabel && !ariaLabelledBy) {\n      issues.push(`Input ${element.name || element.type} lacks proper labeling`);\n    }\n    \n    // Check for required field indicators\n    if (element.required && !element.getAttribute('aria-required')) {\n      issues.push(`Required field ${element.name} should have aria-required=\"true\"`);\n    }\n    \n    // Check for error states\n    if (element.getAttribute('aria-invalid') === 'true') {\n      const errorId = element.getAttribute('aria-describedby');\n      if (!errorId || !form.querySelector(`#${errorId}`)) {\n        issues.push(`Invalid field ${element.name} lacks proper error description`);\n      }\n    }\n  });\n  \n  return {\n    valid: issues.length === 0,\n    issues,\n  };\n}\n\n/**\n * Sets up keyboard navigation for custom components\n */\nexport function setupKeyboardNavigation(\n  container: HTMLElement,\n  focusableSelector: string = 'button, [href], input, select, textarea, [tabindex]:not([tabindex=\"-1\"])'\n): void {\n  const focusableElements = container.querySelectorAll(focusableSelector) as NodeListOf<HTMLElement>;\n  \n  const handleKeyDown = (e: KeyboardEvent) => {\n    const currentIndex = Array.from(focusableElements).indexOf(document.activeElement as HTMLElement);\n    \n    switch (e.key) {\n      case 'ArrowDown':\n      case 'ArrowRight':\n        e.preventDefault();\n        const nextIndex = (currentIndex + 1) % focusableElements.length;\n        focusableElements[nextIndex].focus();\n        break;\n        \n      case 'ArrowUp':\n      case 'ArrowLeft':\n        e.preventDefault();\n        const prevIndex = (currentIndex - 1 + focusableElements.length) % focusableElements.length;\n        focusableElements[prevIndex].focus();\n        break;\n        \n      case 'Home':\n        e.preventDefault();\n        focusableElements[0].focus();\n        break;\n        \n      case 'End':\n        e.preventDefault();\n        focusableElements[focusableElements.length - 1].focus();\n        break;\n    }\n  };\n  \n  container.addEventListener('keydown', handleKeyDown);\n}\n\n/**\n * Medical-specific accessibility constants\n */\nexport const MEDICAL_A11Y = {\n  // Minimum touch target size for medical interfaces (larger than standard 44px)\n  MIN_TOUCH_TARGET: 48,\n  \n  // Timeouts for medical contexts (longer than typical web)\n  SESSION_WARNING_TIME: 5 * 60 * 1000, // 5 minutes\n  SESSION_TIMEOUT: 30 * 60 * 1000, // 30 minutes\n  \n  // ARIA roles for medical contexts\n  ROLES: {\n    MEDICAL_FORM: 'form',\n    PATIENT_INFO: 'region',\n    SOAP_NOTE: 'document',\n    RECORDING_STATUS: 'status',\n    ERROR_ALERT: 'alert',\n  },\n  \n  // Color contrast ratios for medical interfaces\n  CONTRAST: {\n    NORMAL_TEXT: 4.5,\n    LARGE_TEXT: 3,\n    NON_TEXT: 3,\n  },\n} as const;"
+// Accessibility utilities for WCAG AA compliance
+
+/**
+ * Checks if a color meets WCAG AA contrast ratio requirements
+ * @param foreground - The foreground color in hex format
+ * @param background - The background color in hex format
+ * @returns Object with contrast ratio and compliance status
+ */
+export function checkContrastRatio(foreground: string, background: string) {
+  const getLuminance = (color: string): number => {
+    const rgb = hexToRgb(color);
+    if (!rgb) return 0;
+    
+    const { r, g, b } = rgb;
+    
+    const [rs, gs, bs] = [r, g, b].map(c => {
+      c = c / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    
+    return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+  };
+  
+  const l1 = getLuminance(foreground);
+  const l2 = getLuminance(background);
+  
+  const contrast = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+  
+  return {
+    ratio: Math.round(contrast * 100) / 100,
+    passAA: contrast >= 4.5,
+    passAALarge: contrast >= 3,
+    passAAA: contrast >= 7,
+  };
+}
+
+/**
+ * Converts hex color to RGB
+ */
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? {
+        r: parseInt(result[1], 16),
+        g: parseInt(result[2], 16),
+        b: parseInt(result[3], 16),
+      }
+    : null;
+}
+
+/**
+ * Generates a unique ID for form elements
+ */
+export function generateId(prefix: string = 'id'): string {
+  return `${prefix}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+/**
+ * Checks if an element is visible to screen readers
+ */
+export function isVisibleToScreenReaders(element: HTMLElement): boolean {
+  const style = window.getComputedStyle(element);
+  
+  return !(
+    style.display === 'none' ||
+    style.visibility === 'hidden' ||
+    style.opacity === '0' ||
+    element.hasAttribute('aria-hidden') ||
+    element.hidden
+  );
+}
+
+/**
+ * Announces text to screen readers using aria-live
+ */
+export function announceToScreenReader(
+  message: string,
+  priority: 'polite' | 'assertive' = 'polite'
+): void {
+  const announcer = document.createElement('div');
+  announcer.setAttribute('aria-live', priority);
+  announcer.setAttribute('aria-atomic', 'true');
+  announcer.className = 'sr-only';
+  announcer.textContent = message;
+  
+  document.body.appendChild(announcer);
+  
+  // Remove after announcement
+  setTimeout(() => {
+    document.body.removeChild(announcer);
+  }, 1000);
+}
+
+/**
+ * Creates proper ARIA labels for complex UI elements
+ */
+export function createAriaLabel(
+  baseLabel: string,
+  state?: string,
+  description?: string
+): string {
+  let label = baseLabel;
+  
+  if (state) {
+    label += `, ${state}`;
+  }
+  
+  if (description) {
+    label += `. ${description}`;
+  }
+  
+  return label;
+}
+
+/**
+ * Validates form accessibility
+ */
+export function validateFormAccessibility(form: HTMLFormElement): {
+  valid: boolean;
+  issues: string[];
+} {
+  const issues: string[] = [];
+  const inputs = form.querySelectorAll('input, textarea, select');
+  
+  inputs.forEach((input) => {
+    const element = input as HTMLInputElement;
+    
+    // Check for labels
+    const label = form.querySelector(`label[for="${element.id}"]`);
+    const ariaLabel = element.getAttribute('aria-label');
+    const ariaLabelledBy = element.getAttribute('aria-labelledby');
+    
+    if (!label && !ariaLabel && !ariaLabelledBy) {
+      issues.push(`Input ${element.name || element.type} lacks proper labeling`);
+    }
+    
+    // Check for required field indicators
+    if (element.required && !element.getAttribute('aria-required')) {
+      issues.push(`Required field ${element.name} should have aria-required="true"`);
+    }
+    
+    // Check for error states
+    if (element.getAttribute('aria-invalid') === 'true') {
+      const errorId = element.getAttribute('aria-describedby');
+      if (!errorId || !form.querySelector(`#${errorId}`)) {
+        issues.push(`Invalid field ${element.name} lacks proper error description`);
+      }
+    }
+  });
+  
+  return {
+    valid: issues.length === 0,
+    issues,
+  };
+}
+
+/**
+ * Sets up keyboard navigation for custom components
+ */
+export function setupKeyboardNavigation(
+  container: HTMLElement,
+  focusableSelector: string = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+): void {
+  const focusableElements = container.querySelectorAll(focusableSelector) as NodeListOf<HTMLElement>;
+  
+  const handleKeyDown = (e: KeyboardEvent) => {
+    const currentIndex = Array.from(focusableElements).indexOf(document.activeElement as HTMLElement);
+    
+    switch (e.key) {
+      case 'ArrowDown':
+      case 'ArrowRight':
+        e.preventDefault();
+        const nextIndex = (currentIndex + 1) % focusableElements.length;
+        focusableElements[nextIndex].focus();
+        break;
+        
+      case 'ArrowUp':
+      case 'ArrowLeft':
+        e.preventDefault();
+        const prevIndex = (currentIndex - 1 + focusableElements.length) % focusableElements.length;
+        focusableElements[prevIndex].focus();
+        break;
+        
+      case 'Home':
+        e.preventDefault();
+        focusableElements[0].focus();
+        break;
+        
+      case 'End':
+        e.preventDefault();
+        focusableElements[focusableElements.length - 1].focus();
+        break;
+    }
+  };
+  
+  container.addEventListener('keydown', handleKeyDown);
+}
+
+/**
+ * Medical-specific accessibility constants
+ */
+export const MEDICAL_A11Y = {
+  // Minimum touch target size for medical interfaces (larger than standard 44px)
+  MIN_TOUCH_TARGET: 48,
+  
+  // Timeouts for medical contexts (longer than typical web)
+  SESSION_WARNING_TIME: 5 * 60 * 1000, // 5 minutes
+  SESSION_TIMEOUT: 30 * 60 * 1000, // 30 minutes
+  
+  // ARIA roles for medical contexts
+  ROLES: {
+    MEDICAL_FORM: 'form',
+    PATIENT_INFO: 'region',
+    SOAP_NOTE: 'document',
+    RECORDING_STATUS: 'status',
+    ERROR_ALERT: 'alert',
+  },
+  
+  // Color contrast ratios for medical interfaces
+  CONTRAST: {
+    NORMAL_TEXT: 4.5,
+    LARGE_TEXT: 3,
+    NON_TEXT: 3,
+  },
+} as const;

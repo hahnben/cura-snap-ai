@@ -1,1 +1,121 @@
-import { apiClient } from './api.client';\nimport { Session, Message } from '../types/session';\nimport { v4 as uuidv4 } from 'uuid';\n\ninterface CreateSessionRequest {\n  patientName?: string;\n}\n\ninterface CreateSessionResponse {\n  session: Session;\n}\n\ninterface SendMessageRequest {\n  content: string;\n  source: 'text' | 'audio';\n}\n\ninterface SendMessageResponse {\n  message: Message;\n}\n\nclass SessionService {\n  private readonly basePath = '/api/sessions';\n\n  async createSession(data: CreateSessionRequest): Promise<Session> {\n    try {\n      const response = await apiClient.post<CreateSessionResponse>(this.basePath, data);\n      return response.session;\n    } catch (error) {\n      console.error('Failed to create session:', error);\n      \n      // Fallback to local session creation in case backend is unavailable\n      const fallbackSession: Session = {\n        id: uuidv4(),\n        patientName: data.patientName,\n        createdAt: new Date().toISOString(),\n        updatedAt: new Date().toISOString(),\n        status: 'active',\n        userId: 'local-user', // This would come from auth in real implementation\n      };\n      \n      return fallbackSession;\n    }\n  }\n\n  async getSession(sessionId: string): Promise<Session> {\n    try {\n      return await apiClient.get<Session>(`${this.basePath}/${sessionId}`);\n    } catch (error) {\n      console.error('Failed to get session:', error);\n      throw error;\n    }\n  }\n\n  async updateSession(sessionId: string, updates: Partial<Session>): Promise<Session> {\n    try {\n      return await apiClient.patch<Session>(`${this.basePath}/${sessionId}`, updates);\n    } catch (error) {\n      console.error('Failed to update session:', error);\n      throw error;\n    }\n  }\n\n  async deleteSession(sessionId: string): Promise<void> {\n    try {\n      await apiClient.delete(`${this.basePath}/${sessionId}`);\n    } catch (error) {\n      console.error('Failed to delete session:', error);\n      throw error;\n    }\n  }\n\n  async sendMessage(\n    sessionId: string,\n    content: string,\n    source: 'text' | 'audio'\n  ): Promise<Message> {\n    try {\n      const response = await apiClient.post<SendMessageResponse>(\n        `${this.basePath}/${sessionId}/messages`,\n        { content, source }\n      );\n      return response.message;\n    } catch (error) {\n      console.error('Failed to send message:', error);\n      \n      // Fallback to local message creation\n      const fallbackMessage: Message = {\n        id: uuidv4(),\n        sessionId,\n        content,\n        type: 'user',\n        source,\n        createdAt: new Date().toISOString(),\n      };\n      \n      return fallbackMessage;\n    }\n  }\n\n  async getMessages(sessionId: string): Promise<Message[]> {\n    try {\n      return await apiClient.get<Message[]>(`${this.basePath}/${sessionId}/messages`);\n    } catch (error) {\n      console.error('Failed to get messages:', error);\n      throw error;\n    }\n  }\n\n  async getUserSessions(): Promise<Session[]> {\n    try {\n      return await apiClient.get<Session[]>(this.basePath);\n    } catch (error) {\n      console.error('Failed to get user sessions:', error);\n      throw error;\n    }\n  }\n}\n\nexport const sessionService = new SessionService();\nexport default sessionService;"
+import { apiClient } from './api.client';
+import { Session, Message } from '../types/session';
+import { v4 as uuidv4 } from 'uuid';
+
+interface CreateSessionRequest {
+  patientName?: string;
+}
+
+interface CreateSessionResponse {
+  session: Session;
+}
+
+interface SendMessageRequest {
+  content: string;
+  source: 'text' | 'audio';
+}
+
+interface SendMessageResponse {
+  message: Message;
+}
+
+class SessionService {
+  private readonly basePath = '/api/sessions';
+
+  async createSession(data: CreateSessionRequest): Promise<Session> {
+    try {
+      const response = await apiClient.post<CreateSessionResponse>(this.basePath, data);
+      return response.session;
+    } catch (error) {
+      console.error('Failed to create session:', error);
+      
+      // Fallback to local session creation in case backend is unavailable
+      const fallbackSession: Session = {
+        id: uuidv4(),
+        patientName: data.patientName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        status: 'active',
+        userId: 'local-user', // This would come from auth in real implementation
+      };
+      
+      return fallbackSession;
+    }
+  }
+
+  async getSession(sessionId: string): Promise<Session> {
+    try {
+      return await apiClient.get<Session>(`${this.basePath}/${sessionId}`);
+    } catch (error) {
+      console.error('Failed to get session:', error);
+      throw error;
+    }
+  }
+
+  async updateSession(sessionId: string, updates: Partial<Session>): Promise<Session> {
+    try {
+      return await apiClient.patch<Session>(`${this.basePath}/${sessionId}`, updates);
+    } catch (error) {
+      console.error('Failed to update session:', error);
+      throw error;
+    }
+  }
+
+  async deleteSession(sessionId: string): Promise<void> {
+    try {
+      await apiClient.delete(`${this.basePath}/${sessionId}`);
+    } catch (error) {
+      console.error('Failed to delete session:', error);
+      throw error;
+    }
+  }
+
+  async sendMessage(
+    sessionId: string,
+    content: string,
+    source: 'text' | 'audio'
+  ): Promise<Message> {
+    try {
+      const response = await apiClient.post<SendMessageResponse>(
+        `${this.basePath}/${sessionId}/messages`,
+        { content, source }
+      );
+      return response.message;
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      
+      // Fallback to local message creation
+      const fallbackMessage: Message = {
+        id: uuidv4(),
+        sessionId,
+        content,
+        type: 'user',
+        source,
+        createdAt: new Date().toISOString(),
+      };
+      
+      return fallbackMessage;
+    }
+  }
+
+  async getMessages(sessionId: string): Promise<Message[]> {
+    try {
+      return await apiClient.get<Message[]>(`${this.basePath}/${sessionId}/messages`);
+    } catch (error) {
+      console.error('Failed to get messages:', error);
+      throw error;
+    }
+  }
+
+  async getUserSessions(): Promise<Session[]> {
+    try {
+      return await apiClient.get<Session[]>(this.basePath);
+    } catch (error) {
+      console.error('Failed to get user sessions:', error);
+      throw error;
+    }
+  }
+}
+
+export const sessionService = new SessionService();
+export default sessionService;

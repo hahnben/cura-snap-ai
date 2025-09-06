@@ -1,1 +1,37 @@
-export interface Session {\n  id: string;\n  patientName?: string;\n  createdAt: string;\n  updatedAt: string;\n  status: 'active' | 'completed';\n  userId: string;\n}\n\nexport interface Message {\n  id: string;\n  sessionId: string;\n  content: string;\n  type: 'user' | 'assistant' | 'system';\n  source: 'text' | 'audio';\n  createdAt: string;\n}\n\nexport interface SOAPNote {\n  id: string;\n  sessionId: string;\n  subjective: string;\n  objective: string;\n  assessment: string;\n  plan: string;\n  createdAt: string;\n  updatedAt: string;\n}\n\nexport interface AudioRecording {\n  id: string;\n  sessionId: string;\n  audioUrl: string;\n  transcription?: string;\n  duration: number;\n  createdAt: string;\n}"
+export interface Session {
+  id: string;
+  patientName?: string;
+  createdAt: string;
+  updatedAt: string;
+  status: 'active' | 'completed';
+  userId: string;
+}
+
+export interface Message {
+  id: string;
+  sessionId: string;
+  content: string;
+  type: 'user' | 'assistant' | 'system';
+  source: 'text' | 'audio';
+  createdAt: string;
+}
+
+export interface SOAPNote {
+  id: string;
+  sessionId: string;
+  subjective: string;
+  objective: string;
+  assessment: string;
+  plan: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AudioRecording {
+  id: string;
+  sessionId: string;
+  audioUrl: string;
+  transcription?: string;
+  duration: number;
+  createdAt: string;
+}

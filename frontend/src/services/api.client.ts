@@ -1,1 +1,135 @@
-import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';\n\nconst API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';\nconst REQUEST_TIMEOUT = 30000; // 30 seconds\n\nclass ApiClient {\n  private client: AxiosInstance;\n\n  constructor() {\n    this.client = axios.create({\n      baseURL: API_BASE_URL,\n      timeout: REQUEST_TIMEOUT,\n      headers: {\n        'Content-Type': 'application/json',\n      },\n    });\n\n    this.setupInterceptors();\n  }\n\n  private setupInterceptors() {\n    // Request interceptor - Add auth token\n    this.client.interceptors.request.use(\n      (config) => {\n        const token = sessionStorage.getItem('supabase.auth.token');\n        if (token) {\n          config.headers.Authorization = `Bearer ${token}`;\n        }\n        return config;\n      },\n      (error) => {\n        console.error('Request interceptor error:', error);\n        return Promise.reject(error);\n      }\n    );\n\n    // Response interceptor - Handle errors\n    this.client.interceptors.response.use(\n      (response: AxiosResponse) => response,\n      (error: AxiosError) => {\n        console.error('API Error:', error);\n\n        // Handle specific error cases\n        if (error.response?.status === 401) {\n          // Unauthorized - redirect to login\n          sessionStorage.removeItem('supabase.auth.token');\n          window.location.href = '/login';\n          return Promise.reject(new Error('Session expired. Please log in again.'));\n        }\n\n        if (error.response?.status === 403) {\n          return Promise.reject(new Error('Access denied. You do not have permission to perform this action.'));\n        }\n\n        if (error.response?.status >= 500) {\n          return Promise.reject(new Error('Server error. Please try again later.'));\n        }\n\n        if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {\n          return Promise.reject(new Error('Request timeout. Please check your connection and try again.'));\n        }\n\n        if (!error.response) {\n          return Promise.reject(new Error('Network error. Please check your connection and try again.'));\n        }\n\n        // Default error handling\n        const message = error.response?.data?.message || error.message || 'An unexpected error occurred.';\n        return Promise.reject(new Error(message));\n      }\n    );\n  }\n\n  // HTTP Methods\n  async get<T>(url: string, params?: Record<string, any>): Promise<T> {\n    const response = await this.client.get<T>(url, { params });\n    return response.data;\n  }\n\n  async post<T>(url: string, data?: any, config?: any): Promise<T> {\n    const response = await this.client.post<T>(url, data, config);\n    return response.data;\n  }\n\n  async put<T>(url: string, data?: any): Promise<T> {\n    const response = await this.client.put<T>(url, data);\n    return response.data;\n  }\n\n  async delete<T>(url: string): Promise<T> {\n    const response = await this.client.delete<T>(url);\n    return response.data;\n  }\n\n  async patch<T>(url: string, data?: any): Promise<T> {\n    const response = await this.client.patch<T>(url, data);\n    return response.data;\n  }\n\n  // File upload helper\n  async uploadFile<T>(\n    url: string,\n    file: File | Blob,\n    fileName?: string,\n    additionalData?: Record<string, any>\n  ): Promise<T> {\n    const formData = new FormData();\n    \n    if (file instanceof File) {\n      formData.append('file', file);\n    } else {\n      formData.append('file', file, fileName || 'recording.webm');\n    }\n\n    // Add additional form data\n    if (additionalData) {\n      Object.entries(additionalData).forEach(([key, value]) => {\n        formData.append(key, String(value));\n      });\n    }\n\n    const response = await this.client.post<T>(url, formData, {\n      headers: {\n        'Content-Type': 'multipart/form-data',\n      },\n      timeout: 120000, // 2 minutes for file uploads\n    });\n    \n    return response.data;\n  }\n}\n\n// Export singleton instance\nexport const apiClient = new ApiClient();\nexport default apiClient;"
+import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
+const REQUEST_TIMEOUT = 30000; // 30 seconds
+
+class ApiClient {
+  private client: AxiosInstance;
+
+  constructor() {
+    this.client = axios.create({
+      baseURL: API_BASE_URL,
+      timeout: REQUEST_TIMEOUT,
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    this.setupInterceptors();
+  }
+
+  private setupInterceptors() {
+    // Request interceptor - Add auth token
+    this.client.interceptors.request.use(
+      (config) => {
+        const token = sessionStorage.getItem('supabase.auth.token');
+        if (token) {
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+        return config;
+      },
+      (error) => {
+        console.error('Request interceptor error:', error);
+        return Promise.reject(error);
+      }
+    );
+
+    // Response interceptor - Handle errors
+    this.client.interceptors.response.use(
+      (response: AxiosResponse) => response,
+      (error: AxiosError) => {
+        console.error('API Error:', error);
+
+        // Handle specific error cases
+        if (error.response?.status === 401) {
+          // Unauthorized - redirect to login
+          sessionStorage.removeItem('supabase.auth.token');
+          window.location.href = '/login';
+          return Promise.reject(new Error('Session expired. Please log in again.'));
+        }
+
+        if (error.response?.status === 403) {
+          return Promise.reject(new Error('Access denied. You do not have permission to perform this action.'));
+        }
+
+        if (error.response?.status >= 500) {
+          return Promise.reject(new Error('Server error. Please try again later.'));
+        }
+
+        if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+          return Promise.reject(new Error('Request timeout. Please check your connection and try again.'));
+        }
+
+        if (!error.response) {
+          return Promise.reject(new Error('Network error. Please check your connection and try again.'));
+        }
+
+        // Default error handling
+        const message = error.response?.data?.message || error.message || 'An unexpected error occurred.';
+        return Promise.reject(new Error(message));
+      }
+    );
+  }
+
+  // HTTP Methods
+  async get<T>(url: string, params?: Record<string, any>): Promise<T> {
+    const response = await this.client.get<T>(url, { params });
+    return response.data;
+  }
+
+  async post<T>(url: string, data?: any, config?: any): Promise<T> {
+    const response = await this.client.post<T>(url, data, config);
+    return response.data;
+  }
+
+  async put<T>(url: string, data?: any): Promise<T> {
+    const response = await this.client.put<T>(url, data);
+    return response.data;
+  }
+
+  async delete<T>(url: string): Promise<T> {
+    const response = await this.client.delete<T>(url);
+    return response.data;
+  }
+
+  async patch<T>(url: string, data?: any): Promise<T> {
+    const response = await this.client.patch<T>(url, data);
+    return response.data;
+  }
+
+  // File upload helper
+  async uploadFile<T>(
+    url: string,
+    file: File | Blob,
+    fileName?: string,
+    additionalData?: Record<string, any>
+  ): Promise<T> {
+    const formData = new FormData();
+    
+    if (file instanceof File) {
+      formData.append('file', file);
+    } else {
+      formData.append('file', file, fileName || 'recording.webm');
+    }
+
+    // Add additional form data
+    if (additionalData) {
+      Object.entries(additionalData).forEach(([key, value]) => {
+        formData.append(key, String(value));
+      });
+    }
+
+    const response = await this.client.post<T>(url, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+      timeout: 120000, // 2 minutes for file uploads
+    });
+    
+    return response.data;
+  }
+}
+
+// Export singleton instance
+export const apiClient = new ApiClient();
+export default apiClient;
