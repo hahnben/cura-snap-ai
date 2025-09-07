@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { LoginPage } from '../pages/LoginPage';
 import { DashboardPage } from '../pages/DashboardPage';
+import { ResetPasswordPage } from '../pages/ResetPasswordPage';
 import { LoadingSpinner } from './ui/LoadingSpinner';
 
 interface ProtectedRouteProps {
@@ -44,6 +45,10 @@ export function AppRouter() {
             <DashboardPage />
           </ProtectedRoute>
         }
+      />
+      <Route
+        path="/auth/reset-password"
+        element={<ResetPasswordPage />}
       />
       <Route
         path="/"
