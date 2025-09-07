@@ -1,34 +1,32 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Box,
-  AppBar,
-  Toolbar,
   Typography,
-  IconButton,
-  Button,
   Card,
   CardContent,
   TextField,
   Stack,
-  Chip,
-  Avatar,
-  Menu,
-  MenuItem,
+  IconButton,
   LinearProgress,
   Alert,
+  AppBar,
+  Toolbar,
+  Chip,
+  Menu,
+  MenuItem,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
 import {
-  Logout,
-  AccountCircle,
   Mic,
   MicOff,
   Send,
-  Stop,
-  PlayArrow,
-  Pause,
+  Logout,
+  AccountCircle,
 } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useError } from '../contexts/ErrorContext';
+import { usePatientSession, useInitializePatientSession } from '../contexts/PatientSessionContext';
 
 interface Message {
   id: string;
@@ -39,8 +37,12 @@ interface Message {
 }
 
 export function DashboardPage() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
   const { user, signOut, timeRemaining } = useAuth();
   const { showError } = useError();
+  const { currentPatient } = usePatientSession();
+  const initializePatientSession = useInitializePatientSession();
   
   // UI State
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
@@ -50,7 +52,6 @@ export function DashboardPage() {
   
   // Audio State
   const [isRecording, setIsRecording] = useState(false);
-  const [isPlaying, setIsPlaying] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [audioPermission, setAudioPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
   
@@ -58,6 +59,11 @@ export function DashboardPage() {
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
   const recordingInterval = useRef<NodeJS.Timeout | null>(null);
+
+  // Initialize patient session on component mount
+  useEffect(() => {
+    initializePatientSession();
+  }, [initializePatientSession]);
 
   // Format remaining time
   const formatTime = (ms: number) => {
@@ -93,8 +99,8 @@ export function DashboardPage() {
         setAudioPermission('granted');
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder.current = new MediaRecorder(stream);
+      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder.current = new MediaRecorder(audioStream);
       audioChunks.current = [];
 
       mediaRecorder.current.ondataavailable = (event) => {
@@ -104,7 +110,7 @@ export function DashboardPage() {
       mediaRecorder.current.onstop = () => {
         const audioBlob = new Blob(audioChunks.current, { type: 'audio/wav' });
         handleAudioMessage(audioBlob);
-        stream.getTracks().forEach(track => track.stop());
+        audioStream.getTracks().forEach(track => track.stop());
       };
 
       mediaRecorder.current.start();
@@ -137,6 +143,9 @@ export function DashboardPage() {
     setIsLoading(true);
     
     try {
+      // TODO: Process audioBlob with transcription service
+      console.log('Audio blob received:', audioBlob);
+      
       // Create audio message
       const audioMessage: Message = {
         id: Date.now().toString(),
@@ -234,61 +243,69 @@ _📝 Bitte ergänzen Sie fehlende Informationen._`,
   };
 
   return (
-    <Box sx={{ flexGrow: 1, height: '100vh', display: 'flex', flexDirection: 'column' }}>
-      {/* Header */}
-      <AppBar position="static" elevation={1}>
-        <Toolbar>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            CuraSnap AI - Dashboard
-          </Typography>
-          
-          {/* Session Timer */}
-          <Chip
-            label={`Session: ${formatTime(timeRemaining)}`}
-            variant="outlined"
-            sx={{ mr: 2, color: 'white', borderColor: 'white' }}
-          />
-          
-          {/* User Menu */}
-          <IconButton
-            size="large"
-            aria-label="account menu"
-            aria-controls="menu-appbar"
-            aria-haspopup="true"
-            onClick={handleMenuClick}
-            color="inherit"
-          >
-            <AccountCircle />
-          </IconButton>
-          
-          <Menu
-            id="menu-appbar"
-            anchorEl={anchorEl}
-            anchorOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-            keepMounted
-            transformOrigin={{
-              vertical: 'top',
-              horizontal: 'right',
-            }}
-            open={Boolean(anchorEl)}
-            onClose={handleMenuClose}
-          >
-            <MenuItem disabled>
-              <Typography variant="body2">{user?.email}</Typography>
-            </MenuItem>
-            <MenuItem onClick={handleSignOut}>
-              <Logout sx={{ mr: 1 }} />
-              Abmelden
-            </MenuItem>
-          </Menu>
-        </Toolbar>
-      </AppBar>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+      {/* Desktop Header - Only visible on desktop */}
+      {!isMobile && (
+        <AppBar position="static" elevation={0} sx={{ backgroundColor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
+          <Toolbar sx={{ minHeight: 64 }}>
+            <Typography variant="h6" component="div" sx={{ flexGrow: 1, color: 'text.primary' }}>
+              SOAP Assistant
+              {currentPatient && (
+                <Typography variant="body2" color="text.secondary" sx={{ ml: 1, display: 'inline' }}>
+                  - {currentPatient.name}
+                </Typography>
+              )}
+            </Typography>
+            
+            {/* Session Timer */}
+            <Chip
+              label={`Session: ${formatTime(timeRemaining)}`}
+              variant="outlined"
+              size="small"
+              sx={{ mr: 2 }}
+            />
+            
+            {/* User Menu */}
+            <IconButton
+              size="large"
+              aria-label="account menu"
+              aria-controls="menu-appbar"
+              aria-haspopup="true"
+              onClick={handleMenuClick}
+              sx={{ color: 'text.primary' }}
+            >
+              <AccountCircle />
+            </IconButton>
+            
+            <Menu
+              id="menu-appbar"
+              anchorEl={anchorEl}
+              anchorOrigin={{
+                vertical: 'bottom',
+                horizontal: 'right',
+              }}
+              keepMounted
+              transformOrigin={{
+                vertical: 'top',
+                horizontal: 'right',
+              }}
+              open={Boolean(anchorEl)}
+              onClose={handleMenuClose}
+            >
+              <MenuItem disabled>
+                <Typography variant="body2">{user?.email}</Typography>
+              </MenuItem>
+              <MenuItem onClick={handleSignOut}>
+                <Logout sx={{ mr: 1 }} />
+                Abmelden
+              </MenuItem>
+            </Menu>
+          </Toolbar>
+        </AppBar>
+      )}
 
       {/* Main Content */}
-      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: 2, gap: 2 }}>
+      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: 2, gap: 2, overflow: 'hidden' }}>
         
         {/* Progress Indicator */}
         {isLoading && (

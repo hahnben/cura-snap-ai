@@ -4,6 +4,7 @@ import { CssBaseline, CircularProgress, Box } from '@mui/material';
 import { medicalTheme } from './utils/theme';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ErrorProvider } from './contexts/ErrorContext';
+import { DashboardLayout } from './components/layout/DashboardLayout';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
 import './App.css';
@@ -75,7 +76,9 @@ function App() {
                 path="/dashboard"
                 element={
                   <ProtectedRoute>
-                    <DashboardPage />
+                    <DashboardLayout>
+                      <DashboardPage />
+                    </DashboardLayout>
                   </ProtectedRoute>
                 }
               />
