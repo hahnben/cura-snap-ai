@@ -37,6 +37,10 @@ else
     pkill -f "npm run dev" 2>/dev/null && echo "🌐 Stopped Frontend"  
     pkill -f "uvicorn.*8001" 2>/dev/null && echo "🤖 Stopped Agent Service"
     pkill -f "uvicorn.*8002" 2>/dev/null && echo "🎤 Stopped Transcription Service"
+    
+    # Also kill any remaining Vite processes
+    pkill -f "vite" 2>/dev/null && echo "⚡ Stopped remaining Vite processes"
+    pkill -f "esbuild" 2>/dev/null && echo "🔨 Stopped ESBuild processes"
 fi
 
 echo "🏁 Cleanup complete!"

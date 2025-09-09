@@ -1,7 +1,13 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
+import { createClient } from '@supabase/supabase-js';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 const REQUEST_TIMEOUT = 30000; // 30 seconds
+
+// Create Supabase client for token access
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 class ApiClient {
   private client: AxiosInstance;
@@ -19,12 +25,16 @@ class ApiClient {
   }
 
   private setupInterceptors() {
-    // Request interceptor - Add auth token
+    // Request interceptor - Add auth token from Supabase session
     this.client.interceptors.request.use(
-      (config) => {
-        const token = sessionStorage.getItem('supabase.auth.token');
-        if (token) {
-          config.headers.Authorization = `Bearer ${token}`;
+      async (config) => {
+        try {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.access_token) {
+            config.headers.Authorization = `Bearer ${session.access_token}`;
+          }
+        } catch (error) {
+          console.warn('Failed to get Supabase session:', error);
         }
         return config;
       },
@@ -42,8 +52,12 @@ class ApiClient {
 
         // Handle specific error cases
         if (error.response?.status === 401) {
-          // Unauthorized - redirect to login
-          sessionStorage.removeItem('supabase.auth.token');
+          // Unauthorized - sign out and redirect to login
+          try {
+            await supabase.auth.signOut();
+          } catch (signOutError) {
+            console.warn('Failed to sign out:', signOutError);
+          }
           window.location.href = '/login';
           return Promise.reject(new Error('Session expired. Please log in again.'));
         }
