@@ -22,8 +22,9 @@ import java.util.*;
 import java.util.Base64;
 
 /**
- * REST controller for async job management and audio processing
+ * REST controller for async job management and processing
  * Provides non-blocking endpoints that return job IDs immediately
+ * Supports both audio processing and text processing workflows
  */
 @Slf4j
 @RestController
@@ -135,6 +136,85 @@ public class AsyncNoteController {
                     userId, e.getMessage(), e);
             // Track unexpected errors
             metricsService.incrementCounter("async_jobs_created_total", "job_type", "audio_processing", "user_id", userId, "status", "unexpected_error", "error_type", e.getClass().getSimpleName());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * Async text processing endpoint - returns job ID immediately
+     * Text processing happens in background
+     *
+     * @param jwt the decoded JWT token containing user identity
+     * @param request the text processing request
+     * @return ResponseEntity containing job information
+     */
+    @Timed(value = "http_request_duration_seconds", description = "Async text processing request duration", extraTags = {"endpoint", "/api/v1/async/notes/format", "operation", "async_text_processing"})
+    @PostMapping("/notes/format")
+    public ResponseEntity<JobResponse> formatTextAsync(
+            @AuthenticationPrincipal Jwt jwt,
+            @Valid @RequestBody NoteRequest request
+    ) {
+        String userId = (jwt != null) ? jwt.getSubject() : "test-user";
+        log.info("Received async text processing request from user: {}", userId);
+
+        try {
+            // Check for system degradation
+            if (serviceDegradationService.isSystemDegraded()) {
+                return handleDegradedTextProcessing(userId, request);
+            }
+
+            // Basic input validation
+            if (request == null || request.getTextRaw() == null || request.getTextRaw().trim().isEmpty()) {
+                log.warn("Invalid request received: empty or missing text input from user {}", userId);
+                return ResponseEntity.badRequest().build();
+            }
+
+            // Prepare job input data with text content
+            Map<String, Object> inputData = new HashMap<>();
+            inputData.put("textRaw", request.getTextRaw().trim());
+            
+            // Add optional fields if present
+            if (request.getSessionId() != null && !request.getSessionId().trim().isEmpty()) {
+                inputData.put("sessionId", request.getSessionId().trim());
+            }
+            if (request.getTranscriptId() != null && !request.getTranscriptId().trim().isEmpty()) {
+                inputData.put("transcriptId", request.getTranscriptId().trim());
+            }
+            
+            // Add metadata for processing
+            inputData.put("textLength", request.getTextRaw().trim().length());
+            inputData.put("submissionTime", java.time.Instant.now().toString());
+            
+            log.debug("Text processing job prepared for user {}: {} characters", userId, request.getTextRaw().length());
+
+            // Create job request
+            JobRequest jobRequest = JobRequest.builder()
+                    .jobType(JobData.JobType.TEXT_PROCESSING)
+                    .inputData(inputData)
+                    .sessionId(request.getSessionId())
+                    .build();
+
+            // Create async job with metrics timing
+            JobResponse jobResponse = metricsService.timeAsyncJob("text_processing", () -> jobService.createJob(userId, jobRequest));
+            
+            // Track async job creation metrics
+            metricsService.incrementCounter("async_jobs_created_total", "job_type", "text_processing", "user_id", userId, "status", "success");
+            
+            log.info("Created async text processing job {} for user {}", 
+                    jobResponse.getJobId(), userId);
+
+            return ResponseEntity.ok(jobResponse);
+
+        } catch (JobService.JobServiceException e) {
+            log.error("Failed to create async text processing job for user {}: {}", userId, e.getMessage());
+            // Track job creation failures
+            metricsService.incrementCounter("async_jobs_created_total", "job_type", "text_processing", "user_id", userId, "status", "job_creation_error", "error_type", "JobServiceException");
+            return ResponseEntity.internalServerError().build();
+        } catch (Exception e) {
+            log.error("Unexpected error processing async text request for user {}: {}", 
+                    userId, e.getMessage(), e);
+            // Track unexpected errors
+            metricsService.incrementCounter("async_jobs_created_total", "job_type", "text_processing", "user_id", userId, "status", "unexpected_error", "error_type", e.getClass().getSimpleName());
             return ResponseEntity.internalServerError().build();
         }
     }
@@ -471,6 +551,46 @@ public class AsyncNoteController {
     }
 
     /**
+     * Handle text processing during system degradation
+     */
+    private ResponseEntity<JobResponse> handleDegradedTextProcessing(String userId, NoteRequest request) {
+        try {
+            ServiceDegradationService.DegradationLevel degradationLevel = 
+                serviceDegradationService.getCurrentDegradationLevel();
+
+            log.warn("Text processing during degradation level: {} for user: {}", degradationLevel, userId);
+
+            switch (degradationLevel) {
+                case MINOR_DEGRADATION:
+                case MODERATE_DEGRADATION:
+                    // Allow processing but inform user of potential delays
+                    return processTextWithDegradationWarning(userId, request);
+
+                case MAJOR_DEGRADATION:
+                    // Check if agent service specifically is degraded
+                    if (serviceDegradationService.getServiceDegradationState("agent-service").isDegraded()) {
+                        return returnAgentServiceDegraded();
+                    }
+                    return processTextWithDegradationWarning(userId, request);
+
+                case CRITICAL_DEGRADATION:
+                case MAINTENANCE_MODE:
+                    // Return maintenance mode response
+                    return returnMaintenanceMode();
+
+                default:
+                    // Fallback to normal processing
+                    return processNormalTextProcessing(userId, request);
+            }
+
+        } catch (Exception e) {
+            log.error("Error handling degraded text processing for user {}: {}", userId, e.getMessage(), e);
+            return ResponseEntity.status(503) // Service Unavailable
+                    .build();
+        }
+    }
+
+    /**
      * Handle audio upload during system degradation
      */
     private ResponseEntity<JobResponse> handleDegradedAudioUpload(String userId, MultipartFile audioFile, String sessionId) {
@@ -507,6 +627,84 @@ public class AsyncNoteController {
             log.error("Error handling degraded audio upload for user {}: {}", userId, e.getMessage(), e);
             return ResponseEntity.status(503) // Service Unavailable
                     .build();
+        }
+    }
+
+    /**
+     * Process text with degradation warning
+     */
+    private ResponseEntity<JobResponse> processTextWithDegradationWarning(String userId, NoteRequest request) {
+        try {
+            // Validate text input
+            if (request == null || request.getTextRaw() == null || request.getTextRaw().trim().isEmpty()) {
+                log.warn("Invalid text request during degradation for user {}", userId);
+                return ResponseEntity.badRequest().build();
+            }
+
+            // Create job with degradation context
+            JobRequest jobRequest = createDegradedTextJobRequest(request);
+            JobResponse jobResponse = jobService.createJob(userId, jobRequest);
+
+            // Add degradation warning to response
+            log.info("Created degraded text processing job {} for user {} with warning", 
+                    jobResponse.getJobId(), userId);
+
+            return ResponseEntity.ok()
+                    .header("X-System-Status", "degraded")
+                    .header("X-Degradation-Level", serviceDegradationService.getCurrentDegradationLevel().name())
+                    .body(jobResponse);
+
+        } catch (Exception e) {
+            log.error("Failed to process degraded text request: {}", e.getMessage());
+            return ResponseEntity.status(503).build();
+        }
+    }
+
+    /**
+     * Return agent service degraded response
+     */
+    private ResponseEntity<JobResponse> returnAgentServiceDegraded() {
+        String message = serviceDegradationService.getServiceDegradationMessage("agent-service");
+        
+        return ResponseEntity.status(503) // Service Unavailable
+                .header("X-Service-Status", "agent-service-degraded")
+                .header("X-Degradation-Message", message)
+                .header("Retry-After", "1800") // Suggest retry after 30 minutes
+                .build();
+    }
+
+    /**
+     * Process normal text processing (fallback)
+     */
+    private ResponseEntity<JobResponse> processNormalTextProcessing(String userId, NoteRequest request) {
+        try {
+            // Basic input validation
+            if (request == null || request.getTextRaw() == null || request.getTextRaw().trim().isEmpty()) {
+                return ResponseEntity.badRequest().build();
+            }
+
+            // Create normal job request
+            Map<String, Object> inputData = new HashMap<>();
+            inputData.put("textRaw", request.getTextRaw().trim());
+            if (request.getSessionId() != null) {
+                inputData.put("sessionId", request.getSessionId().trim());
+            }
+            if (request.getTranscriptId() != null) {
+                inputData.put("transcriptId", request.getTranscriptId().trim());
+            }
+
+            JobRequest jobRequest = JobRequest.builder()
+                    .jobType(JobData.JobType.TEXT_PROCESSING)
+                    .inputData(inputData)
+                    .sessionId(request.getSessionId())
+                    .build();
+
+            JobResponse jobResponse = jobService.createJob(userId, jobRequest);
+            return ResponseEntity.ok(jobResponse);
+
+        } catch (Exception e) {
+            log.error("Failed to process normal text request: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
         }
     }
 
@@ -576,6 +774,32 @@ public class AsyncNoteController {
         // This would contain the original processing logic
         // For now, we'll just return a simple response
         return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Create job request with degradation context for text processing
+     */
+    private JobRequest createDegradedTextJobRequest(NoteRequest request) {
+        Map<String, Object> inputData = new HashMap<>();
+        inputData.put("textRaw", request.getTextRaw().trim());
+        inputData.put("textLength", request.getTextRaw().trim().length());
+        inputData.put("degradationContext", true);
+        inputData.put("degradationLevel", serviceDegradationService.getCurrentDegradationLevel().name());
+        inputData.put("submissionTime", java.time.Instant.now().toString());
+        
+        // Add optional fields if present
+        if (request.getSessionId() != null && !request.getSessionId().trim().isEmpty()) {
+            inputData.put("sessionId", request.getSessionId().trim());
+        }
+        if (request.getTranscriptId() != null && !request.getTranscriptId().trim().isEmpty()) {
+            inputData.put("transcriptId", request.getTranscriptId().trim());
+        }
+
+        return JobRequest.builder()
+                .jobType(JobData.JobType.TEXT_PROCESSING)
+                .inputData(inputData)
+                .sessionId(request.getSessionId())
+                .build();
     }
 
     /**

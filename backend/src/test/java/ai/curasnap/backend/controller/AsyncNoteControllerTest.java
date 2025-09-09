@@ -3,6 +3,9 @@ package ai.curasnap.backend.controller;
 import ai.curasnap.backend.model.dto.*;
 import ai.curasnap.backend.service.JobService;
 import ai.curasnap.backend.service.TranscriptionService;
+import ai.curasnap.backend.service.WorkerHealthService;
+import ai.curasnap.backend.service.ServiceDegradationService;
+import ai.curasnap.backend.service.RequestLatencyMetricsService;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
@@ -40,12 +43,23 @@ class AsyncNoteControllerTest {
     @MockBean
     private TranscriptionService transcriptionService;
 
+    @MockBean
+    private WorkerHealthService workerHealthService;
+
+    @MockBean
+    private ServiceDegradationService serviceDegradationService;
+
+    @MockBean
+    private RequestLatencyMetricsService metricsService;
+
     @Autowired
     private ObjectMapper objectMapper;
 
     private MockMultipartFile validAudioFile;
     private JobResponse sampleJobResponse;
     private JobStatusResponse sampleJobStatusResponse;
+    private NoteRequest validTextRequest;
+    private JobResponse sampleTextJobResponse;
 
     @BeforeEach
     void setUp() {
@@ -77,6 +91,32 @@ class AsyncNoteControllerTest {
                 .result(Map.of("noteId", "note-123"))
                 .processingTimeMs(25000L)
                 .build();
+
+        // Create sample text request
+        validTextRequest = new NoteRequest();
+        validTextRequest.setTextRaw("Patient reports headache and fatigue for the past 3 days. No fever. Taking ibuprofen as needed.");
+        validTextRequest.setSessionId("session-123");
+        validTextRequest.setTranscriptId("transcript-456");
+
+        // Create sample text job response
+        sampleTextJobResponse = JobResponse.builder()
+                .jobId("test-text-job-id")
+                .jobType(JobData.JobType.TEXT_PROCESSING)
+                .status(JobData.JobStatus.QUEUED)
+                .createdAt(Instant.now())
+                .statusUrl("/api/v1/async/jobs/test-text-job-id")
+                .message("Text processing job queued successfully")
+                .build();
+
+        // Setup default mock behavior for service degradation
+        when(serviceDegradationService.isSystemDegraded()).thenReturn(false);
+        
+        // Setup default mock behavior for metrics service
+        when(metricsService.timeAsyncJob(anyString(), any())).thenAnswer(invocation -> {
+            // Execute the supplier function and return its result
+            java.util.function.Supplier<?> supplier = invocation.getArgument(1);
+            return supplier.get();
+        });
     }
 
     @Test
@@ -366,5 +406,195 @@ class AsyncNoteControllerTest {
                 .file(unsupportedFile)
                 .with(jwt().jwt(jwt -> jwt.subject("user"))))
                 .andExpect(status().isBadRequest());
+    }
+
+    // ========== TEXT PROCESSING ASYNC TESTS ==========
+
+    @Test
+    @WithMockUser
+    void formatTextAsync_ValidText_ShouldReturnJobResponse() throws Exception {
+        // Given
+        when(jobService.createJob(eq("user"), any(JobRequest.class))).thenReturn(sampleTextJobResponse);
+
+        // When & Then
+        mockMvc.perform(post("/api/v1/async/notes/format")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validTextRequest))
+                .with(jwt().jwt(jwt -> jwt.subject("user"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobId").value("test-text-job-id"))
+                .andExpect(jsonPath("$.jobType").value("TEXT_PROCESSING"))
+                .andExpect(jsonPath("$.status").value("QUEUED"))
+                .andExpect(jsonPath("$.statusUrl").value("/api/v1/async/jobs/test-text-job-id"))
+                .andExpect(jsonPath("$.message").value("Text processing job queued successfully"));
+
+        verify(jobService).createJob(eq("user"), argThat(jobRequest -> 
+            jobRequest.getJobType() == JobData.JobType.TEXT_PROCESSING &&
+            jobRequest.getInputData().get("textRaw").equals(validTextRequest.getTextRaw().trim()) &&
+            jobRequest.getSessionId().equals("session-123")
+        ));
+    }
+
+    @Test
+    @WithMockUser
+    void formatTextAsync_EmptyText_ShouldReturnBadRequest() throws Exception {
+        // Given
+        NoteRequest emptyTextRequest = new NoteRequest();
+        emptyTextRequest.setTextRaw("");
+
+        // When & Then
+        mockMvc.perform(post("/api/v1/async/notes/format")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(emptyTextRequest))
+                .with(jwt().jwt(jwt -> jwt.subject("user"))))
+                .andExpect(status().isBadRequest());
+
+        verify(jobService, never()).createJob(anyString(), any(JobRequest.class));
+    }
+
+    @Test
+    @WithMockUser
+    void formatTextAsync_NullText_ShouldReturnBadRequest() throws Exception {
+        // Given
+        NoteRequest nullTextRequest = new NoteRequest();
+        nullTextRequest.setTextRaw(null);
+
+        // When & Then
+        mockMvc.perform(post("/api/v1/async/notes/format")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(nullTextRequest))
+                .with(jwt().jwt(jwt -> jwt.subject("user"))))
+                .andExpect(status().isBadRequest());
+
+        verify(jobService, never()).createJob(anyString(), any(JobRequest.class));
+    }
+
+    @Test
+    @WithMockUser
+    void formatTextAsync_WhitespaceOnlyText_ShouldReturnBadRequest() throws Exception {
+        // Given
+        NoteRequest whitespaceRequest = new NoteRequest();
+        whitespaceRequest.setTextRaw("   \n\t   ");
+
+        // When & Then
+        mockMvc.perform(post("/api/v1/async/notes/format")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(whitespaceRequest))
+                .with(jwt().jwt(jwt -> jwt.subject("user"))))
+                .andExpect(status().isBadRequest());
+
+        verify(jobService, never()).createJob(anyString(), any(JobRequest.class));
+    }
+
+    @Test
+    @WithMockUser
+    void formatTextAsync_WithoutOptionalFields_ShouldWork() throws Exception {
+        // Given
+        NoteRequest minimalRequest = new NoteRequest();
+        minimalRequest.setTextRaw("Simple medical note text.");
+        when(jobService.createJob(eq("user"), any(JobRequest.class))).thenReturn(sampleTextJobResponse);
+
+        // When & Then
+        mockMvc.perform(post("/api/v1/async/notes/format")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(minimalRequest))
+                .with(jwt().jwt(jwt -> jwt.subject("user"))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobType").value("TEXT_PROCESSING"));
+
+        verify(jobService).createJob(eq("user"), argThat(jobRequest -> 
+            jobRequest.getJobType() == JobData.JobType.TEXT_PROCESSING &&
+            jobRequest.getInputData().get("textRaw").equals("Simple medical note text.") &&
+            jobRequest.getSessionId() == null
+        ));
+    }
+
+    @Test
+    @WithMockUser
+    void formatTextAsync_JobServiceException_ShouldReturnServerError() throws Exception {
+        // Given
+        when(jobService.createJob(anyString(), any(JobRequest.class)))
+                .thenThrow(new JobService.JobServiceException("Redis connection error"));
+
+        // When & Then
+        mockMvc.perform(post("/api/v1/async/notes/format")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validTextRequest))
+                .with(jwt().jwt(jwt -> jwt.subject("user"))))
+                .andExpect(status().isInternalServerError());
+
+        verify(jobService).createJob(eq("user"), any(JobRequest.class));
+        verify(metricsService).incrementCounter(eq("async_jobs_created_total"), 
+            eq("job_type"), eq("text_processing"), 
+            eq("user_id"), eq("user"), 
+            eq("status"), eq("job_creation_error"));
+    }
+
+    @Test
+    @WithMockUser
+    void formatTextAsync_UnexpectedException_ShouldReturnServerError() throws Exception {
+        // Given
+        when(jobService.createJob(anyString(), any(JobRequest.class)))
+                .thenThrow(new RuntimeException("Unexpected database error"));
+
+        // When & Then
+        mockMvc.perform(post("/api/v1/async/notes/format")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validTextRequest))
+                .with(jwt().jwt(jwt -> jwt.subject("user"))))
+                .andExpect(status().isInternalServerError());
+
+        verify(metricsService).incrementCounter(eq("async_jobs_created_total"), 
+            eq("job_type"), eq("text_processing"), 
+            eq("user_id"), eq("user"), 
+            eq("status"), eq("unexpected_error"), 
+            eq("error_type"), eq("RuntimeException"));
+    }
+
+    @Test
+    @WithMockUser
+    void formatTextAsync_SystemDegraded_ShouldHandleDegradation() throws Exception {
+        // Given
+        when(serviceDegradationService.isSystemDegraded()).thenReturn(true);
+        when(serviceDegradationService.getCurrentDegradationLevel())
+                .thenReturn(ServiceDegradationService.DegradationLevel.MINOR_DEGRADATION);
+        when(jobService.createJob(anyString(), any(JobRequest.class))).thenReturn(sampleTextJobResponse);
+
+        // When & Then
+        mockMvc.perform(post("/api/v1/async/notes/format")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validTextRequest))
+                .with(jwt().jwt(jwt -> jwt.subject("user"))))
+                .andExpect(status().isOk())
+                .andExpect(header().string("X-System-Status", "degraded"))
+                .andExpect(header().string("X-Degradation-Level", "MINOR_DEGRADATION"));
+
+        verify(jobService).createJob(eq("user"), argThat(jobRequest -> 
+            jobRequest.getInputData().get("degradationContext").equals(true)
+        ));
+    }
+
+    @Test
+    void formatTextAsync_NoAuthentication_ShouldReturnUnauthorized() throws Exception {
+        // When & Then
+        mockMvc.perform(post("/api/v1/async/notes/format")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(validTextRequest)))
+                .andExpect(status().isUnauthorized());
+
+        verify(jobService, never()).createJob(anyString(), any(JobRequest.class));
+    }
+
+    @Test
+    @WithMockUser
+    void formatTextAsync_InvalidJSON_ShouldReturnBadRequest() throws Exception {
+        // When & Then
+        mockMvc.perform(post("/api/v1/async/notes/format")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{invalid-json}")
+                .with(jwt().jwt(jwt -> jwt.subject("user"))))
+                .andExpect(status().isBadRequest());
+
+        verify(jobService, never()).createJob(anyString(), any(JobRequest.class));
     }
 }
