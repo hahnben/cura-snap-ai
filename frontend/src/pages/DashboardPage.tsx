@@ -1,40 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
 import {
   Box,
-  Typography,
-  Card,
-  CardContent,
-  TextField,
-  Stack,
-  IconButton,
   LinearProgress,
   Alert,
-  AppBar,
-  Toolbar,
-  Chip,
-  Menu,
-  MenuItem,
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import {
-  Mic,
-  MicOff,
-  Send,
-  Logout,
-  AccountCircle,
-} from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useError } from '../contexts/ErrorContext';
 import { usePatientSession, useInitializePatientSession } from '../contexts/PatientSessionContext';
+import { DashboardHeader } from '../components/dashboard/DashboardHeader';
+import { ChatInterface } from '../components/chat/ChatInterface';
+import { ChatMessage, AudioRecordingState } from '../types/chat.types';
 
-interface Message {
-  id: string;
-  content: string;
-  type: 'user' | 'assistant';
-  timestamp: string;
-  source?: 'text' | 'audio';
-}
 
 export function DashboardPage() {
   const theme = useTheme();
@@ -44,33 +22,14 @@ export function DashboardPage() {
   const { currentPatient } = usePatientSession();
   const initializePatientSession = useInitializePatientSession();
   
-  // UI State
-  const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [inputText, setInputText] = useState('');
+  // Simplified state - components manage their own state now
   const [isLoading, setIsLoading] = useState(false);
-  
-  // Audio State
-  const [isRecording, setIsRecording] = useState(false);
-  const [recordingTime, setRecordingTime] = useState(0);
   const [audioPermission, setAudioPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
-  
-  // Refs
-  const mediaRecorder = useRef<MediaRecorder | null>(null);
-  const audioChunks = useRef<Blob[]>([]);
-  const recordingInterval = useRef<NodeJS.Timeout | null>(null);
 
   // Initialize patient session on component mount
   useEffect(() => {
     initializePatientSession();
   }, [initializePatientSession]);
-
-  // Format remaining time
-  const formatTime = (ms: number) => {
-    const minutes = Math.floor(ms / 60000);
-    const seconds = Math.floor((ms % 60000) / 1000);
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
 
   // Initialize audio permission check
   useEffect(() => {
@@ -79,230 +38,28 @@ export function DashboardPage() {
       .catch(() => setAudioPermission('denied'));
   }, []);
 
-  const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
-    setAnchorEl(event.currentTarget);
+  // Callback handlers for components
+  const handleNewMessage = (message: ChatMessage) => {
+    // Handle new messages from chat interface
+    console.log('New message:', message);
   };
 
-  const handleMenuClose = () => {
-    setAnchorEl(null);
+  const handleAudioTranscription = (audioBlob: Blob, duration: number) => {
+    // Handle audio transcription
+    console.log('Audio transcription received:', audioBlob, duration);
+    // TODO: Send to transcription service
   };
 
-  const handleSignOut = async () => {
-    handleMenuClose();
-    await signOut();
-  };
-
-  const startRecording = async () => {
-    try {
-      if (audioPermission !== 'granted') {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        setAudioPermission('granted');
-      }
-
-      const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder.current = new MediaRecorder(audioStream);
-      audioChunks.current = [];
-
-      mediaRecorder.current.ondataavailable = (event) => {
-        audioChunks.current.push(event.data);
-      };
-
-      mediaRecorder.current.onstop = () => {
-        const audioBlob = new Blob(audioChunks.current, { type: 'audio/wav' });
-        handleAudioMessage(audioBlob);
-        audioStream.getTracks().forEach(track => track.stop());
-      };
-
-      mediaRecorder.current.start();
-      setIsRecording(true);
-      setRecordingTime(0);
-
-      recordingInterval.current = setInterval(() => {
-        setRecordingTime(prev => prev + 1);
-      }, 1000);
-
-    } catch (error) {
-      showError('Mikrofonzugriff fehlgeschlagen. Bitte überprüfen Sie die Berechtigungen.');
-      setAudioPermission('denied');
-    }
-  };
-
-  const stopRecording = () => {
-    if (mediaRecorder.current && isRecording) {
-      mediaRecorder.current.stop();
-      setIsRecording(false);
-      
-      if (recordingInterval.current) {
-        clearInterval(recordingInterval.current);
-        recordingInterval.current = null;
-      }
-    }
-  };
-
-  const handleAudioMessage = async (audioBlob: Blob) => {
-    setIsLoading(true);
-    
-    try {
-      // TODO: Process audioBlob with transcription service
-      console.log('Audio blob received:', audioBlob);
-      
-      // Create audio message
-      const audioMessage: Message = {
-        id: Date.now().toString(),
-        content: `🎤 Audio-Aufnahme (${recordingTime}s)`,
-        type: 'user',
-        timestamp: new Date().toISOString(),
-        source: 'audio',
-      };
-
-      setMessages(prev => [...prev, audioMessage]);
-      
-      // Simulate API call for transcription and SOAP generation
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `**SOAP Note Entwurf generiert**
-
-**Subjektiv:**
-Patient berichtet über... [Hier würde die Transkription der Audioaufnahme verarbeitet]
-
-**Objektiv:**
-Vital signs... [Objektive Befunde basierend auf der Eingabe]
-
-**Assessment:**
-Verdachtsdiagnose... [KI-generierte Einschätzung]
-
-**Plan:**
-Behandlungsplan... [Empfohlene nächste Schritte]
-
-_📝 Bitte überprüfen und bei Bedarf anpassen._`,
-        type: 'assistant',
-        timestamp: new Date().toISOString(),
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
-      showError('SOAP Note erfolgreich generiert!', 'success');
-      
-    } catch (error) {
-      showError('Fehler bei der Audio-Verarbeitung. Bitte versuchen Sie es erneut.');
-    } finally {
-      setIsLoading(false);
-      setRecordingTime(0);
-    }
-  };
-
-  const handleTextMessage = async () => {
-    if (!inputText.trim() || isLoading) return;
-
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      content: inputText,
-      type: 'user',
-      timestamp: new Date().toISOString(),
-      source: 'text',
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInputText('');
-    setIsLoading(true);
-
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `**SOAP Note basierend auf Ihrem Text:**
-
-**Subjektiv:**
-${inputText.substring(0, 100)}...
-
-**Objektiv:**
-[Zu vervollständigen basierend auf klinischen Befunden]
-
-**Assessment:**
-[KI-Analyse der beschriebenen Symptome]
-
-**Plan:**
-[Empfohlene Behandlungsschritte]
-
-_📝 Bitte ergänzen Sie fehlende Informationen._`,
-        type: 'assistant',
-        timestamp: new Date().toISOString(),
-      };
-
-      setMessages(prev => [...prev, assistantMessage]);
-      showError('SOAP Note Entwurf erstellt!', 'success');
-      
-    } catch (error) {
-      showError('Fehler bei der Verarbeitung. Bitte versuchen Sie es erneut.');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Desktop Header - Only visible on desktop */}
-      {!isMobile && (
-        <AppBar position="static" elevation={0} sx={{ backgroundColor: 'background.paper', borderBottom: 1, borderColor: 'divider' }}>
-          <Toolbar sx={{ minHeight: 64 }}>
-            <Typography variant="h6" component="div" sx={{ flexGrow: 1, color: 'text.primary' }}>
-              SOAP Assistant
-              {currentPatient && (
-                <Typography variant="body2" color="text.secondary" sx={{ ml: 1, display: 'inline' }}>
-                  - {currentPatient.name}
-                </Typography>
-              )}
-            </Typography>
-            
-            {/* Session Timer */}
-            <Chip
-              label={`Session: ${formatTime(timeRemaining)}`}
-              variant="outlined"
-              size="small"
-              sx={{ mr: 2 }}
-            />
-            
-            {/* User Menu */}
-            <IconButton
-              size="large"
-              aria-label="account menu"
-              aria-controls="menu-appbar"
-              aria-haspopup="true"
-              onClick={handleMenuClick}
-              sx={{ color: 'text.primary' }}
-            >
-              <AccountCircle />
-            </IconButton>
-            
-            <Menu
-              id="menu-appbar"
-              anchorEl={anchorEl}
-              anchorOrigin={{
-                vertical: 'bottom',
-                horizontal: 'right',
-              }}
-              keepMounted
-              transformOrigin={{
-                vertical: 'top',
-                horizontal: 'right',
-              }}
-              open={Boolean(anchorEl)}
-              onClose={handleMenuClose}
-            >
-              <MenuItem disabled>
-                <Typography variant="body2">{user?.email}</Typography>
-              </MenuItem>
-              <MenuItem onClick={handleSignOut}>
-                <Logout sx={{ mr: 1 }} />
-                Abmelden
-              </MenuItem>
-            </Menu>
-          </Toolbar>
-        </AppBar>
-      )}
+      {/* Header Component */}
+      <DashboardHeader
+        user={user}
+        onSignOut={signOut}
+        timeRemaining={timeRemaining}
+        currentPatient={currentPatient}
+      />
 
       {/* Main Content */}
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', p: 2, gap: 2, overflow: 'hidden' }}>
@@ -319,137 +76,17 @@ _📝 Bitte ergänzen Sie fehlende Informationen._`,
           </Alert>
         )}
 
-        {/* Messages */}
-        <Box sx={{ flexGrow: 1, overflow: 'auto' }}>
-          <Stack spacing={2}>
-            {messages.length === 0 && (
-              <Card>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>
-                    Willkommen bei CuraSnap AI
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Beginnen Sie mit einer Audio-Aufnahme oder geben Sie Patienteninformationen per Text ein.
-                    Die KI erstellt automatisch einen SOAP Note Entwurf.
-                  </Typography>
-                </CardContent>
-              </Card>
-            )}
-
-            {messages.map((message) => (
-              <Box
-                key={message.id}
-                sx={{
-                  display: 'flex',
-                  justifyContent: message.type === 'user' ? 'flex-end' : 'flex-start',
-                }}
-              >
-                <Card
-                  sx={{
-                    maxWidth: '70%',
-                    bgcolor: message.type === 'user' ? 'primary.main' : 'background.paper',
-                    color: message.type === 'user' ? 'primary.contrastText' : 'text.primary',
-                  }}
-                >
-                  <CardContent sx={{ '&:last-child': { pb: 2 } }}>
-                    {message.type === 'assistant' ? (
-                      <Typography 
-                        variant="body1" 
-                        component="div"
-                        sx={{ whiteSpace: 'pre-wrap' }}
-                      >
-                        {message.content}
-                      </Typography>
-                    ) : (
-                      <Typography variant="body1">
-                        {message.content}
-                      </Typography>
-                    )}
-                    <Typography 
-                      variant="caption" 
-                      sx={{ 
-                        display: 'block', 
-                        mt: 1, 
-                        opacity: 0.8,
-                      }}
-                    >
-                      {new Date(message.timestamp).toLocaleTimeString('de-DE')}
-                      {message.source === 'audio' && ' 🎤'}
-                    </Typography>
-                  </CardContent>
-                </Card>
-              </Box>
-            ))}
-          </Stack>
+        {/* Chat Interface Component */}
+        <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
+          <ChatInterface
+            onMessage={handleNewMessage}
+            onAudioTranscription={handleAudioTranscription}
+            isProcessing={isLoading}
+            placeholder="Beschreiben Sie die Patientenbegegnung..."
+            showHeader={false}
+            enableAudio={true}
+          />
         </Box>
-
-        {/* Input Area */}
-        <Card>
-          <CardContent>
-            <Stack direction="row" spacing={1} alignItems="flex-end">
-              {/* Audio Controls */}
-              <Box>
-                {isRecording ? (
-                  <IconButton
-                    color="error"
-                    onClick={stopRecording}
-                    size="large"
-                    sx={{ 
-                      animation: 'pulse 1.5s infinite',
-                      '@keyframes pulse': {
-                        '0%': { opacity: 1 },
-                        '50%': { opacity: 0.5 },
-                        '100%': { opacity: 1 },
-                      }
-                    }}
-                  >
-                    <MicOff />
-                  </IconButton>
-                ) : (
-                  <IconButton
-                    color="primary"
-                    onClick={startRecording}
-                    disabled={isLoading || audioPermission === 'denied'}
-                    size="large"
-                  >
-                    <Mic />
-                  </IconButton>
-                )}
-                {isRecording && (
-                  <Typography variant="caption" display="block" textAlign="center">
-                    {recordingTime}s
-                  </Typography>
-                )}
-              </Box>
-
-              {/* Text Input */}
-              <TextField
-                fullWidth
-                multiline
-                maxRows={4}
-                placeholder="Beschreiben Sie die Patientenbegegnung..."
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                disabled={isLoading || isRecording}
-                onKeyPress={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleTextMessage();
-                  }
-                }}
-              />
-
-              {/* Send Button */}
-              <IconButton
-                color="primary"
-                onClick={handleTextMessage}
-                disabled={!inputText.trim() || isLoading || isRecording}
-              >
-                <Send />
-              </IconButton>
-            </Stack>
-          </CardContent>
-        </Card>
       </Box>
     </Box>
   );

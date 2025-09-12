@@ -10,7 +10,9 @@ import {
   Chip,
   Divider,
   Card,
-  CardContent
+  CardContent,
+  Stack,
+  LinearProgress
 } from '@mui/material';
 import {
   Send as SendIcon,
@@ -18,23 +20,25 @@ import {
   Description as DocumentIcon
 } from '@mui/icons-material';
 import { textProcessingService, JobStatusResponse, SOAPResult } from '../../services/text-processing.service';
+import { ChatMessage, ChatInterfaceProps } from '../../types/chat.types';
+import { AudioControls } from '../dashboard/AudioControls';
 
-interface ChatMessage {
-  id: string;
-  type: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: Date;
-  soapResult?: SOAPResult;
-  isProcessing?: boolean;
-  error?: string;
-}
-
-export function ChatInterface() {
+export function ChatInterface({ 
+  onMessage, 
+  onAudioTranscription, 
+  isProcessing: externalIsProcessing, 
+  placeholder = "Beschreiben Sie die Patientenbegegnung...",
+  showHeader = true,
+  enableAudio = true 
+}: ChatInterfaceProps = {}) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Use external processing state if provided
+  const currentIsProcessing = externalIsProcessing ?? isProcessing;
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -48,6 +52,12 @@ export function ChatInterface() {
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, newMessage]);
+    
+    // Notify parent component if callback provided
+    if (onMessage) {
+      onMessage(newMessage);
+    }
+    
     return newMessage.id;
   };
 
@@ -136,6 +146,86 @@ export function ChatInterface() {
     setMessages([]);
   };
 
+  const handleAudioMessage = async (audioBlob: Blob, duration: number) => {
+    // Create audio message
+    const audioMessage: ChatMessage = {
+      id: Date.now().toString(),
+      content: `🎤 Audio-Aufnahme (${duration}s)`,
+      type: 'user',
+      timestamp: new Date(),
+      source: 'audio',
+      recordingDuration: duration,
+    };
+
+    setMessages(prev => [...prev, audioMessage]);
+
+    // Notify parent if callback provided
+    if (onAudioTranscription) {
+      onAudioTranscription(audioBlob, duration);
+      return; // Let parent handle the audio processing
+    }
+
+    // Default handling: TODO - integrate with transcription service
+    // For now, we'll simulate SOAP generation from audio
+    const processingMessageId = addMessage({
+      type: 'assistant',
+      content: 'Verarbeitung der Audio-Aufnahme zu einer SOAP-Note...',
+      isProcessing: true,
+    });
+
+    setIsProcessing(true);
+    setProcessingStatus('Audio wird transkribiert...');
+
+    try {
+      // TODO: Integrate with transcription service
+      // This is placeholder logic - in real implementation, 
+      // we would send audioBlob to transcription service first
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      const simulatedTranscription = "Patient berichtet über Kopfschmerzen seit 2 Tagen...";
+      
+      // Process the transcribed text with SOAP service
+      await textProcessingService.processTextToSOAP(
+        simulatedTranscription,
+        undefined, // sessionId
+        (status: JobStatusResponse) => {
+          const statusMessages = {
+            'QUEUED': 'SOAP-Note in Warteschlange...',
+            'PROCESSING': 'SOAP-Note wird generiert...',
+          };
+          
+          const statusMessage = statusMessages[status.status as keyof typeof statusMessages] 
+            || `Status: ${status.status}`;
+          
+          setProcessingStatus(statusMessage);
+          
+          if (status.progressMessage) {
+            updateMessage(processingMessageId, {
+              content: status.progressMessage,
+            });
+          }
+        }
+      ).then((soapResult) => {
+        updateMessage(processingMessageId, {
+          content: 'SOAP-Note wurde erfolgreich aus Audio-Aufnahme erstellt:',
+          isProcessing: false,
+          soapResult,
+        });
+      });
+
+    } catch (error) {
+      console.error('Audio processing failed:', error);
+      updateMessage(processingMessageId, {
+        content: 'Fehler bei der Audio-Verarbeitung',
+        isProcessing: false,
+        error: error instanceof Error ? error.message : 'Unbekannter Fehler',
+      });
+    } finally {
+      setIsProcessing(false);
+      setProcessingStatus('');
+    }
+  };
+
   const renderSOAPNote = (soap: SOAPResult) => (
     <Card sx={{ mt: 2, bgcolor: 'background.default' }}>
       <CardContent>
@@ -222,6 +312,7 @@ export function ChatInterface() {
           />
           <Typography variant="caption" sx={{ ml: 1, opacity: 0.8 }}>
             {message.timestamp.toLocaleTimeString()}
+            {message.source === 'audio' && ' 🎤'}
           </Typography>
         </Box>
         
@@ -252,19 +343,26 @@ export function ChatInterface() {
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}
-      <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Typography variant="h6" color="primary">
-            SOAP Note Assistant
+      {showHeader && (
+        <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6" color="primary">
+              SOAP Note Assistant
+            </Typography>
+            <IconButton onClick={clearChat} disabled={currentIsProcessing}>
+              <ClearIcon />
+            </IconButton>
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            Geben Sie eine unstrukturierte Patientennotiz ein, und sie wird in eine SOAP-Note umgewandelt
           </Typography>
-          <IconButton onClick={clearChat} disabled={isProcessing}>
-            <ClearIcon />
-          </IconButton>
         </Box>
-        <Typography variant="body2" color="text.secondary">
-          Geben Sie eine unstrukturierte Patientennotiz ein, und sie wird in eine SOAP-Note umgewandelt
-        </Typography>
-      </Box>
+      )}
+      
+      {/* Progress Indicator */}
+      {currentIsProcessing && (
+        <LinearProgress sx={{ borderRadius: 1 }} />
+      )}
 
       {/* Messages */}
       <Box sx={{ flex: 1, overflowY: 'auto', p: 2 }}>
@@ -289,30 +387,53 @@ export function ChatInterface() {
       </Box>
 
       {/* Input */}
-      <Box sx={{ p: 2, borderTop: 1, borderColor: 'divider' }}>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <TextField
-            fullWidth
-            multiline
-            maxRows={4}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyPress={handleKeyPress}
-            placeholder="Patientennotiz eingeben..."
-            disabled={isProcessing}
-            variant="outlined"
-            size="small"
-          />
-          <IconButton
-            onClick={handleSubmit}
-            disabled={!inputText.trim() || isProcessing}
-            color="primary"
-            sx={{ alignSelf: 'flex-end' }}
-          >
-            {isProcessing ? <CircularProgress size={24} /> : <SendIcon />}
-          </IconButton>
-        </Box>
-      </Box>
+      <Card>
+        <CardContent>
+          <Stack direction="row" spacing={1} alignItems="flex-end">
+            {/* Audio Controls */}
+            {enableAudio && (
+              <AudioControls
+                recordingState={{
+                  isRecording: false,
+                  recordingTime: 0,
+                  audioPermission: 'prompt'
+                }}
+                onStartRecording={async () => {
+                  // Audio recording will be handled by AudioControls
+                  // When completed, it will call handleAudioMessage
+                }}
+                onStopRecording={() => {
+                  // Audio stopping will be handled by AudioControls
+                }}
+                disabled={currentIsProcessing}
+              />
+            )}
+
+            {/* Text Input */}
+            <TextField
+              fullWidth
+              multiline
+              maxRows={4}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyPress={handleKeyPress}
+              placeholder={placeholder}
+              disabled={currentIsProcessing}
+              variant="outlined"
+              size="small"
+            />
+
+            {/* Send Button */}
+            <IconButton
+              onClick={handleSubmit}
+              disabled={!inputText.trim() || currentIsProcessing}
+              color="primary"
+            >
+              {currentIsProcessing ? <CircularProgress size={24} /> : <SendIcon />}
+            </IconButton>
+          </Stack>
+        </CardContent>
+      </Card>
     </Box>
   );
 }
