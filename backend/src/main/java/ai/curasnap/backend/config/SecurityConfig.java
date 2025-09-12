@@ -8,7 +8,9 @@ import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.config.Customizer;
-
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
@@ -36,6 +38,7 @@ public class SecurityConfig {
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
             .csrf(csrf -> csrf.disable()) // Disable CSRF protection for stateless REST API
+            .cors(cors -> cors.configurationSource(corsConfigurationSource())) // Enable CORS
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/**").authenticated() // Protect all /api routes
                 .anyRequest().permitAll()                   // Allow everything else (e.g., health checks)
@@ -56,5 +59,44 @@ public class SecurityConfig {
 
         // Build a decoder that knows how to verify HS256 tokens
         return NimbusJwtDecoder.withSecretKey(hmacKey).build();
+    }
+
+    /**
+     * Configure CORS to allow frontend access from development environment
+     * Allows localhost:5173 (Vite dev server) to access /api endpoints
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+        
+        // Allow specific origins - add production origins here when needed
+        configuration.addAllowedOrigin("http://localhost:5173"); // Vite dev server
+        configuration.addAllowedOrigin("http://localhost:3000");  // Alternative React dev server
+        
+        // Allow common HTTP methods
+        configuration.addAllowedMethod("GET");
+        configuration.addAllowedMethod("POST");
+        configuration.addAllowedMethod("PUT");
+        configuration.addAllowedMethod("DELETE");
+        configuration.addAllowedMethod("OPTIONS");
+        configuration.addAllowedMethod("PATCH");
+        
+        // Allow necessary headers
+        configuration.addAllowedHeader("Authorization");
+        configuration.addAllowedHeader("Content-Type");
+        configuration.addAllowedHeader("X-Requested-With");
+        configuration.addAllowedHeader("Accept");
+        configuration.addAllowedHeader("Origin");
+        
+        // Allow credentials (needed for JWT tokens)
+        configuration.setAllowCredentials(true);
+        
+        // Cache preflight responses for 1 hour
+        configuration.setMaxAge(3600L);
+        
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", configuration);
+        
+        return source;
     }
 }
