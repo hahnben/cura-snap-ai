@@ -1,4 +1,4 @@
-import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
+import axios, { type AxiosInstance, type AxiosResponse, AxiosError } from 'axios';
 import { createClient } from '@supabase/supabase-js';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
@@ -30,11 +30,37 @@ class ApiClient {
       async (config) => {
         try {
           const { data: { session } } = await supabase.auth.getSession();
+          
+          // 🔍 JWT SESSION DEBUGGING
+          console.group('🔍 JWT Session Debug');
+          console.log('Session exists:', !!session);
+          console.log('User ID:', session?.user?.id);
+          console.log('User email:', session?.user?.email);
+          console.log('Token exists:', !!session?.access_token);
           if (session?.access_token) {
+            // Decode JWT to see claims (basic parsing)
+            try {
+              const payload = JSON.parse(atob(session.access_token.split('.')[1]));
+              console.log('JWT Claims:', {
+                role: payload.role,
+                aud: payload.aud,
+                exp: new Date(payload.exp * 1000),
+                iat: new Date(payload.iat * 1000),
+                email: payload.email,
+                sub: payload.sub
+              });
+            } catch (jwtError) {
+              console.warn('Could not decode JWT:', jwtError);
+            }
             config.headers.Authorization = `Bearer ${session.access_token}`;
+            console.log('✅ Authorization header set');
+          } else {
+            console.warn('❌ No access token available');
           }
+          console.groupEnd();
+          
         } catch (error) {
-          console.warn('Failed to get Supabase session:', error);
+          console.error('❌ Failed to get Supabase session:', error);
         }
         return config;
       },
@@ -47,8 +73,16 @@ class ApiClient {
     // Response interceptor - Handle errors
     this.client.interceptors.response.use(
       (response: AxiosResponse) => response,
-      (error: AxiosError) => {
-        console.error('API Error:', error);
+      async (error: AxiosError) => {
+        // 🔍 API ERROR DEBUGGING
+        console.group('🚨 API Error Debug');
+        console.error('Status:', error.response?.status);
+        console.error('URL:', error.config?.url);
+        console.error('Method:', error.config?.method?.toUpperCase());
+        console.error('Headers sent:', error.config?.headers);
+        console.error('Response data:', error.response?.data);
+        console.error('Full error:', error);
+        console.groupEnd();
 
         // Handle specific error cases
         if (error.response?.status === 401) {
@@ -66,7 +100,7 @@ class ApiClient {
           return Promise.reject(new Error('Access denied. You do not have permission to perform this action.'));
         }
 
-        if (error.response?.status >= 500) {
+        if (error.response && error.response.status >= 500) {
           return Promise.reject(new Error('Server error. Please try again later.'));
         }
 
@@ -79,7 +113,7 @@ class ApiClient {
         }
 
         // Default error handling
-        const message = error.response?.data?.message || error.message || 'An unexpected error occurred.';
+        const message = (error.response?.data as any)?.message || error.message || 'An unexpected error occurred.';
         return Promise.reject(new Error(message));
       }
     );
