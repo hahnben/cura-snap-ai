@@ -1,29 +1,23 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   LinearProgress,
   Alert,
-  useMediaQuery,
-  useTheme,
 } from '@mui/material';
 import { useAuth } from '../contexts/AuthContext';
-import { useError } from '../contexts/ErrorContext';
 import { usePatientSession, useInitializePatientSession } from '../contexts/PatientSessionContext';
 import { DashboardHeader } from '../components/dashboard/DashboardHeader';
 import { ChatInterface } from '../components/chat/ChatInterface';
-import { ChatMessage, AudioRecordingState } from '../types/chat.types';
+import type { ChatMessage } from '../types/chat.types';
 
 
 export function DashboardPage() {
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
   const { user, signOut, timeRemaining } = useAuth();
-  const { showError } = useError();
   const { currentPatient } = usePatientSession();
   const initializePatientSession = useInitializePatientSession();
   
   // Simplified state - components manage their own state now
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading] = useState(false);
   const [audioPermission, setAudioPermission] = useState<'granted' | 'denied' | 'prompt'>('prompt');
 
   // Initialize patient session on component mount
@@ -39,16 +33,11 @@ export function DashboardPage() {
   }, []);
 
   // Callback handlers for components
-  const handleNewMessage = (message: ChatMessage) => {
+  const handleNewMessage = useCallback((message: ChatMessage) => {
     // Handle new messages from chat interface
     console.log('New message:', message);
-  };
+  }, []);
 
-  const handleAudioTranscription = (audioBlob: Blob, duration: number) => {
-    // Handle audio transcription
-    console.log('Audio transcription received:', audioBlob, duration);
-    // TODO: Send to transcription service
-  };
 
 
   return (
@@ -80,7 +69,6 @@ export function DashboardPage() {
         <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
           <ChatInterface
             onMessage={handleNewMessage}
-            onAudioTranscription={handleAudioTranscription}
             isProcessing={isLoading}
             placeholder="Beschreiben Sie die Patientenbegegnung..."
             showHeader={false}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback, useMemo, memo } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -14,32 +14,32 @@ import {
   Logout,
   AccountCircle,
 } from '@mui/icons-material';
-import { DashboardHeaderProps } from '../../types/chat.types';
+import type { DashboardHeaderProps } from '../../types/chat.types';
 
-export function DashboardHeader({ user, onSignOut, timeRemaining, currentPatient }: DashboardHeaderProps) {
+const DashboardHeaderComponent = ({ user, onSignOut, timeRemaining, currentPatient }: DashboardHeaderProps) => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('lg'));
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
-  // Format remaining time
-  const formatTime = (ms: number) => {
-    const minutes = Math.floor(ms / 60000);
-    const seconds = Math.floor((ms % 60000) / 1000);
+  // Memoize time formatting to avoid recalculation on every render
+  const formattedTime = useMemo(() => {
+    const minutes = Math.floor(timeRemaining / 60000);
+    const seconds = Math.floor((timeRemaining % 60000) / 1000);
     return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
+  }, [timeRemaining]);
 
-  const handleMenuClick = (event: React.MouseEvent<HTMLElement>) => {
+  const handleMenuClick = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
-  };
+  }, []);
 
-  const handleMenuClose = () => {
+  const handleMenuClose = useCallback(() => {
     setAnchorEl(null);
-  };
+  }, []);
 
-  const handleSignOut = async () => {
+  const handleSignOut = useCallback(async () => {
     handleMenuClose();
     await onSignOut();
-  };
+  }, [onSignOut]);
 
   // Only render on desktop (matches original logic)
   if (isMobile) {
@@ -60,7 +60,7 @@ export function DashboardHeader({ user, onSignOut, timeRemaining, currentPatient
         
         {/* Session Timer */}
         <Chip
-          label={`Session: ${formatTime(timeRemaining)}`}
+          label={`Session: ${formattedTime}`}
           variant="outlined"
           size="small"
           sx={{ mr: 2 }}
@@ -104,4 +104,7 @@ export function DashboardHeader({ user, onSignOut, timeRemaining, currentPatient
       </Toolbar>
     </AppBar>
   );
-}
+};
+
+// Memoized export to prevent unnecessary re-renders
+export const DashboardHeader = memo(DashboardHeaderComponent);

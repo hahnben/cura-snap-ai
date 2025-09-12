@@ -1,4 +1,4 @@
-import { SOAPResult } from '../services/text-processing.service';
+import type { SOAPResult } from '../services/text-processing.service';
 
 /**
  * Unified message interface for chat functionality
@@ -32,8 +32,6 @@ export interface AudioRecordingState {
 export interface ChatInterfaceProps {
   /** Callback when a new message is sent */
   onMessage?: (message: ChatMessage) => void;
-  /** Callback when audio transcription is received */
-  onAudioTranscription?: (audioBlob: Blob, duration: number) => void;
   /** Whether the chat is currently processing */
   isProcessing?: boolean;
   /** Custom placeholder text for input */

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import {
   Box,
   IconButton,
@@ -9,15 +9,15 @@ import {
   Mic,
   MicOff,
 } from '@mui/icons-material';
-import { AudioControlsProps, AudioRecordingState } from '../../types/chat.types';
+import type { AudioControlsProps, AudioRecordingState } from '../../types/chat.types';
 import { useError } from '../../contexts/ErrorContext';
 
-export function AudioControls({ 
+const AudioControlsComponent = ({ 
   recordingState, 
   onStartRecording, 
   onStopRecording, 
   disabled = false 
-}: AudioControlsProps) {
+}: AudioControlsProps) => {
   const { showError } = useError();
   const [internalRecordingState, setInternalRecordingState] = useState<AudioRecordingState>({
     isRecording: false,
@@ -48,7 +48,7 @@ export function AudioControls({
       });
   }, [recordingState]);
 
-  const handleStartRecording = async () => {
+  const handleStartRecording = useCallback(async () => {
     if (onStartRecording) {
       await onStartRecording();
       return;
@@ -57,7 +57,7 @@ export function AudioControls({
     // Default implementation when no external handler provided
     try {
       if (currentState.audioPermission !== 'granted') {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        await navigator.mediaDevices.getUserMedia({ audio: true });
         setInternalRecordingState(prev => ({ ...prev, audioPermission: 'granted' }));
       }
 
@@ -94,9 +94,9 @@ export function AudioControls({
       showError('Mikrofonzugriff fehlgeschlagen. Bitte überprüfen Sie die Berechtigungen.');
       setInternalRecordingState(prev => ({ ...prev, audioPermission: 'denied' }));
     }
-  };
+  }, [onStartRecording, currentState.audioPermission, showError]);
 
-  const handleStopRecording = () => {
+  const handleStopRecording = useCallback(() => {
     if (onStopRecording) {
       onStopRecording();
       return;
@@ -112,7 +112,7 @@ export function AudioControls({
         recordingInterval.current = null;
       }
     }
-  };
+  }, [onStopRecording, currentState.isRecording]);
 
   // Show audio permission warning
   if (currentState.audioPermission === 'denied') {
@@ -142,6 +142,7 @@ export function AudioControls({
           onClick={handleStopRecording}
           size="large"
           disabled={disabled}
+          aria-label="Aufnahme stoppen"
           sx={{ 
             animation: 'pulse 1.5s infinite',
             '@keyframes pulse': {
@@ -157,17 +158,27 @@ export function AudioControls({
         <IconButton
           color="primary"
           onClick={handleStartRecording}
-          disabled={disabled || currentState.audioPermission === 'denied'}
+          disabled={disabled || currentState.audioPermission !== 'granted'}
           size="large"
+          aria-label="Aufnahme starten"
         >
           <Mic />
         </IconButton>
       )}
       {currentState.isRecording && (
-        <Typography variant="caption" display="block" textAlign="center">
+        <Typography 
+          variant="caption" 
+          display="block" 
+          textAlign="center"
+          aria-live="polite"
+          aria-label={`Aufnahmezeit: ${currentState.recordingTime} Sekunden`}
+        >
           {currentState.recordingTime}s
         </Typography>
       )}
     </Box>
   );
-}
+};
+
+// Memoized export to prevent unnecessary re-renders
+export const AudioControls = memo(AudioControlsComponent);
