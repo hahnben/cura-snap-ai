@@ -8,7 +8,7 @@ CuraSnap AI is a medical application that processes transcripts and generates SO
 
 - **Backend**: Java Spring Boot 3.5.0 API with OAuth2 authentication via Supabase
 - **Agent Service**: Python FastAPI service with pydantic-ai for SOAP note generation
-- **Frontend**: SvelteKit web application (limited development)
+- **Frontend**: React web application with Vite, TypeScript, and Material-UI
 - **Transcription Service**: Python service for audio processing
 - **Database**: PostgreSQL via Supabase with comprehensive schema for medical sessions
 
@@ -22,6 +22,7 @@ CuraSnap AI is a medical application that processes transcripts and generates SO
 
 ### Key Technologies
 - **Backend**: Spring Boot, Spring Security, JPA/Hibernate, PostgreSQL
+- **Frontend**: React, TypeScript, Vite, Material-UI, React Query, React Hook Form
 - **Agent Service**: FastAPI, pydantic-ai, OpenAI integration
 - **Database**: Supabase (PostgreSQL with auth.users integration)
 - **Containerization**: Docker with docker-compose orchestration
@@ -41,6 +42,24 @@ cd backend
 
 # Build
 ./mvnw clean package
+```
+
+### Frontend (React with Vite)
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Run development server
+npm run dev
+
+# Run linter
+npm run lint
+
+# Build for production
+npm run build
 ```
 
 ### Agent Service (Python FastAPI)
