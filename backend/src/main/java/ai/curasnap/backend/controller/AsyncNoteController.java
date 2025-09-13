@@ -141,6 +141,96 @@ public class AsyncNoteController {
     }
 
     /**
+     * Async transcription-only endpoint - returns job ID immediately
+     * Audio transcription happens in background without SOAP generation
+     *
+     * @param jwt the decoded JWT token containing user identity
+     * @param audioFile the uploaded audio file
+     * @param sessionId optional session ID for tracking
+     * @return ResponseEntity containing job information
+     */
+    @Timed(value = "http_request_duration_seconds", description = "Async transcription-only request duration", extraTags = {"endpoint", "/api/v1/async/transcribe", "operation", "async_transcription_only"})
+    @PostMapping("/transcribe")
+    public ResponseEntity<JobResponse> transcribeAsync(
+            @AuthenticationPrincipal Jwt jwt,
+            @RequestParam("audio") MultipartFile audioFile,
+            @RequestParam(value = "sessionId", required = false) String sessionId
+    ) {
+        String userId = (jwt != null) ? jwt.getSubject() : "test-user";
+        log.info("Received async transcription-only request from user: {}", userId);
+
+        try {
+            // Check for system degradation
+            if (serviceDegradationService.isSystemDegraded()) {
+                return handleDegradedTranscriptionUpload(userId, audioFile, sessionId);
+            }
+
+            // Basic input validation
+            if (audioFile == null || audioFile.isEmpty()) {
+                log.warn("Invalid request received: empty or missing audio file");
+                return ResponseEntity.badRequest().build();
+            }
+
+            // Validate audio file using existing transcription service validation
+            validateAudioFileForAsync(audioFile);
+
+            // Prepare job input data with audio metadata
+            Map<String, Object> inputData = new HashMap<>();
+            inputData.put("originalFileName",
+                SecurityUtils.sanitizeFilenameForLogging(audioFile.getOriginalFilename()));
+            inputData.put("contentType", audioFile.getContentType());
+            inputData.put("fileSize", audioFile.getSize());
+
+            // Store audio data as Base64 for Redis storage
+            try {
+                byte[] audioBytes = audioFile.getBytes();
+                String audioBase64 = Base64.getEncoder().encodeToString(audioBytes);
+                inputData.put("audioData", audioBase64);
+
+                log.debug("Audio file encoded for transcription job processing: {} bytes", audioBytes.length);
+            } catch (Exception e) {
+                log.error("Failed to read audio file for user {}: {}", userId, e.getMessage());
+                return ResponseEntity.internalServerError().build();
+            }
+
+            // Create job request for transcription-only processing
+            JobRequest jobRequest = JobRequest.builder()
+                    .jobType(JobData.JobType.TRANSCRIPTION_ONLY)
+                    .inputData(inputData)
+                    .sessionId(sessionId)
+                    .build();
+
+            // Create async job with metrics timing
+            JobResponse jobResponse = metricsService.timeAsyncJob("transcription_only", () -> jobService.createJob(userId, jobRequest));
+
+            // Track async job creation metrics
+            metricsService.incrementCounter("async_jobs_created_total", "job_type", "transcription_only", "user_id", userId, "status", "success");
+
+            log.info("Created async transcription-only job {} for user {}",
+                    jobResponse.getJobId(), userId);
+
+            return ResponseEntity.ok(jobResponse);
+
+        } catch (TranscriptionService.TranscriptionException e) {
+            log.warn("Audio validation failed for user {}: {}", userId, e.getMessage());
+            // Track validation failures
+            metricsService.incrementCounter("async_jobs_created_total", "job_type", "transcription_only", "user_id", userId, "status", "validation_error", "error_type", "TranscriptionException");
+            return ResponseEntity.badRequest().build();
+        } catch (JobService.JobServiceException e) {
+            log.error("Failed to create async transcription job for user {}: {}", userId, e.getMessage());
+            // Track job creation failures
+            metricsService.incrementCounter("async_jobs_created_total", "job_type", "transcription_only", "user_id", userId, "status", "job_creation_error", "error_type", "JobServiceException");
+            return ResponseEntity.internalServerError().build();
+        } catch (Exception e) {
+            log.error("Unexpected error processing async transcription upload for user {}: {}",
+                    userId, e.getMessage(), e);
+            // Track unexpected errors
+            metricsService.incrementCounter("async_jobs_created_total", "job_type", "transcription_only", "user_id", userId, "status", "unexpected_error", "error_type", e.getClass().getSimpleName());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
      * Async text processing endpoint - returns job ID immediately
      * Text processing happens in background
      *
@@ -591,6 +681,46 @@ public class AsyncNoteController {
     }
 
     /**
+     * Handle transcription upload during system degradation
+     */
+    private ResponseEntity<JobResponse> handleDegradedTranscriptionUpload(String userId, MultipartFile audioFile, String sessionId) {
+        try {
+            ServiceDegradationService.DegradationLevel degradationLevel =
+                serviceDegradationService.getCurrentDegradationLevel();
+
+            log.warn("Transcription upload during degradation level: {} for user: {}", degradationLevel, userId);
+
+            switch (degradationLevel) {
+                case MINOR_DEGRADATION:
+                case MODERATE_DEGRADATION:
+                    // Allow upload but inform user of potential delays
+                    return processTranscriptionWithDegradationWarning(userId, audioFile, sessionId);
+
+                case MAJOR_DEGRADATION:
+                    // Check if transcription service specifically is degraded
+                    if (serviceDegradationService.getServiceDegradationState("transcription-service").isDegraded()) {
+                        return returnTranscriptionServiceDegraded();
+                    }
+                    return processTranscriptionWithDegradationWarning(userId, audioFile, sessionId);
+
+                case CRITICAL_DEGRADATION:
+                case MAINTENANCE_MODE:
+                    // Return maintenance mode response
+                    return returnMaintenanceMode();
+
+                default:
+                    // Fallback to normal processing
+                    return processNormalTranscriptionUpload(userId, audioFile, sessionId);
+            }
+
+        } catch (Exception e) {
+            log.error("Error handling degraded transcription upload for user {}: {}", userId, e.getMessage(), e);
+            return ResponseEntity.status(503) // Service Unavailable
+                    .build();
+        }
+    }
+
+    /**
      * Handle audio upload during system degradation
      */
     private ResponseEntity<JobResponse> handleDegradedAudioUpload(String userId, MultipartFile audioFile, String sessionId) {
@@ -831,12 +961,102 @@ public class AsyncNoteController {
     }
 
     /**
+     * Process transcription with degradation warning
+     */
+    private ResponseEntity<JobResponse> processTranscriptionWithDegradationWarning(String userId, MultipartFile audioFile, String sessionId) {
+        try {
+            // Validate audio file
+            validateAudioFileForAsync(audioFile);
+
+            // Create job with degradation context
+            JobRequest jobRequest = createDegradedTranscriptionJobRequest(audioFile, sessionId);
+            JobResponse jobResponse = jobService.createJob(userId, jobRequest);
+
+            // Add degradation warning to response
+            log.info("Created degraded transcription job {} for user {} with warning",
+                    jobResponse.getJobId(), userId);
+
+            return ResponseEntity.ok()
+                    .header("X-System-Status", "degraded")
+                    .header("X-Degradation-Level", serviceDegradationService.getCurrentDegradationLevel().name())
+                    .body(jobResponse);
+
+        } catch (Exception e) {
+            log.error("Failed to process degraded transcription upload: {}", e.getMessage());
+            return ResponseEntity.status(503).build();
+        }
+    }
+
+    /**
+     * Process normal transcription upload (fallback)
+     */
+    private ResponseEntity<JobResponse> processNormalTranscriptionUpload(String userId, MultipartFile audioFile, String sessionId) {
+        try {
+            // Validate audio file
+            validateAudioFileForAsync(audioFile);
+
+            // Create normal job request
+            Map<String, Object> inputData = new HashMap<>();
+            inputData.put("originalFileName",
+                SecurityUtils.sanitizeFilenameForLogging(audioFile.getOriginalFilename()));
+            inputData.put("contentType", audioFile.getContentType());
+            inputData.put("fileSize", audioFile.getSize());
+
+            // Store audio data as Base64
+            byte[] audioBytes = audioFile.getBytes();
+            String audioBase64 = Base64.getEncoder().encodeToString(audioBytes);
+            inputData.put("audioData", audioBase64);
+
+            JobRequest jobRequest = JobRequest.builder()
+                    .jobType(JobData.JobType.TRANSCRIPTION_ONLY)
+                    .inputData(inputData)
+                    .sessionId(sessionId)
+                    .build();
+
+            JobResponse jobResponse = jobService.createJob(userId, jobRequest);
+            return ResponseEntity.ok(jobResponse);
+
+        } catch (Exception e) {
+            log.error("Failed to process normal transcription request: {}", e.getMessage());
+            return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    /**
+     * Create job request with degradation context for transcription processing
+     */
+    private JobRequest createDegradedTranscriptionJobRequest(MultipartFile audioFile, String sessionId) {
+        Map<String, Object> inputData = new HashMap<>();
+        inputData.put("originalFileName",
+            SecurityUtils.sanitizeFilenameForLogging(audioFile.getOriginalFilename()));
+        inputData.put("contentType", audioFile.getContentType());
+        inputData.put("fileSize", audioFile.getSize());
+        inputData.put("degradationContext", true);
+        inputData.put("degradationLevel", serviceDegradationService.getCurrentDegradationLevel().name());
+
+        // Store audio data as Base64
+        try {
+            byte[] audioBytes = audioFile.getBytes();
+            String audioBase64 = Base64.getEncoder().encodeToString(audioBytes);
+            inputData.put("audioData", audioBase64);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to encode audio data", e);
+        }
+
+        return JobRequest.builder()
+                .jobType(JobData.JobType.TRANSCRIPTION_ONLY)
+                .inputData(inputData)
+                .sessionId(sessionId)
+                .build();
+    }
+
+    /**
      * Calculate estimated delay based on degradation level
      */
     private int calculateEstimatedDelay() {
-        ServiceDegradationService.DegradationLevel level = 
+        ServiceDegradationService.DegradationLevel level =
             serviceDegradationService.getCurrentDegradationLevel();
-        
+
         switch (level) {
             case MINOR_DEGRADATION:
                 return 5; // 5 minutes additional delay

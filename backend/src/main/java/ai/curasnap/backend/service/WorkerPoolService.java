@@ -34,6 +34,9 @@ public class WorkerPoolService {
     @Value("${app.worker.pool.text.size:1}")
     private int textWorkerPoolSize;
 
+    @Value("${app.worker.pool.transcription.size:1}")
+    private int transcriptionWorkerPoolSize;
+
     @Value("${app.worker.pool.processing.interval:5000}")
     private long processingIntervalMs;
 
@@ -44,6 +47,7 @@ public class WorkerPoolService {
     private ScheduledExecutorService schedulerService;
     private final List<ManagedAudioWorker> audioWorkers = new ArrayList<>();
     private final List<ManagedTextWorker> textWorkers = new ArrayList<>();
+    private final List<ManagedTranscriptWorker> transcriptionWorkers = new ArrayList<>();
     private final AtomicInteger workerIdCounter = new AtomicInteger(1);
 
     // Pool statistics
@@ -65,11 +69,11 @@ public class WorkerPoolService {
     @PostConstruct
     public void startWorkerPool() {
         try {
-            log.info("Starting worker pool - Audio workers: {}, Text workers: {}", 
-                    audioWorkerPoolSize, textWorkerPoolSize);
+            log.info("Starting worker pool - Audio workers: {}, Text workers: {}, Transcription workers: {}",
+                    audioWorkerPoolSize, textWorkerPoolSize, transcriptionWorkerPoolSize);
 
             // Create scheduler for worker pool management
-            int totalWorkers = audioWorkerPoolSize + textWorkerPoolSize;
+            int totalWorkers = audioWorkerPoolSize + textWorkerPoolSize + transcriptionWorkerPoolSize;
             schedulerService = Executors.newScheduledThreadPool(totalWorkers + 2); // +2 for management tasks
 
             // Start audio workers
@@ -80,6 +84,11 @@ public class WorkerPoolService {
             // Start text workers
             for (int i = 0; i < textWorkerPoolSize; i++) {
                 startTextWorker();
+            }
+
+            // Start transcription workers
+            for (int i = 0; i < transcriptionWorkerPoolSize; i++) {
+                startTranscriptionWorker();
             }
 
             // Start pool monitoring task
@@ -106,6 +115,7 @@ public class WorkerPoolService {
             // Deactivate all workers
             audioWorkers.forEach(worker -> workerHealthService.deactivateWorker(worker.getWorkerId()));
             textWorkers.forEach(worker -> workerHealthService.deactivateWorker(worker.getWorkerId()));
+            transcriptionWorkers.forEach(worker -> workerHealthService.deactivateWorker(worker.getWorkerId()));
 
             // Shutdown scheduler
             if (schedulerService != null) {
@@ -190,12 +200,44 @@ public class WorkerPoolService {
     }
 
     /**
+     * Start a new transcription worker instance
+     */
+    private void startTranscriptionWorker() {
+        try {
+            ManagedTranscriptWorker worker = new ManagedTranscriptWorker(
+                    generateWorkerId("transcription"),
+                    jobService,
+                    transcriptionService,
+                    workerHealthService
+            );
+
+            // Schedule worker processing task
+            ScheduledFuture<?> workerTask = schedulerService.scheduleWithFixedDelay(
+                    worker::processJobs,
+                    0,
+                    processingIntervalMs,
+                    TimeUnit.MILLISECONDS
+            );
+
+            worker.setWorkerTask(workerTask);
+            transcriptionWorkers.add(worker);
+            totalWorkersCreated++;
+            activeWorkerCount++;
+
+            log.info("Started transcription worker: {}", worker.getWorkerId());
+
+        } catch (Exception e) {
+            log.error("Failed to start transcription worker: {}", e.getMessage(), e);
+        }
+    }
+
+    /**
      * Monitor worker pool health and performance
      */
     private void monitorWorkerPool() {
         try {
-            log.debug("Monitoring worker pool - Audio workers: {}, Text workers: {}, Active: {}", 
-                    audioWorkers.size(), textWorkers.size(), activeWorkerCount);
+            log.debug("Monitoring worker pool - Audio workers: {}, Text workers: {}, Transcription workers: {}, Active: {}",
+                    audioWorkers.size(), textWorkers.size(), transcriptionWorkers.size(), activeWorkerCount);
 
             // Check worker health and restart failed workers if needed
             checkAndRestartFailedWorkers();
@@ -225,6 +267,14 @@ public class WorkerPoolService {
             if (worker.isFailed()) {
                 log.warn("Text worker {} has failed, restarting", worker.getWorkerId());
                 restartTextWorker(worker);
+            }
+        }
+
+        // Check transcription workers
+        for (ManagedTranscriptWorker worker : new ArrayList<>(transcriptionWorkers)) {
+            if (worker.isFailed()) {
+                log.warn("Transcription worker {} has failed, restarting", worker.getWorkerId());
+                restartTranscriptionWorker(worker);
             }
         }
     }
@@ -266,6 +316,26 @@ public class WorkerPoolService {
 
         } catch (Exception e) {
             log.error("Failed to restart text worker {}: {}", failedWorker.getWorkerId(), e.getMessage());
+        }
+    }
+
+    /**
+     * Restart a failed transcription worker
+     */
+    private void restartTranscriptionWorker(ManagedTranscriptWorker failedWorker) {
+        try {
+            // Remove failed worker
+            transcriptionWorkers.remove(failedWorker);
+            failedWorker.shutdown();
+            activeWorkerCount--;
+
+            // Start replacement worker
+            startTranscriptionWorker();
+
+            log.info("Successfully restarted transcription worker {}", failedWorker.getWorkerId());
+
+        } catch (Exception e) {
+            log.error("Failed to restart transcription worker {}: {}", failedWorker.getWorkerId(), e.getMessage());
         }
     }
 

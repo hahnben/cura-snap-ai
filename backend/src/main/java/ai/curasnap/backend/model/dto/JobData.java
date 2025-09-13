@@ -103,6 +103,7 @@ public class JobData {
     public enum JobType {
         TEXT_PROCESSING("text_processing"),
         AUDIO_PROCESSING("audio_processing"),
+        TRANSCRIPTION_ONLY("transcription_only"),
         CACHE_WARMING("cache_warming");
         
         private final String value;
