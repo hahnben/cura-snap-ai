@@ -123,10 +123,7 @@ public class ManagedTextWorker {
             // Update job with results
             Map<String, Object> result = new HashMap<>();
             result.put("noteResponse", Map.of(
-                "id", noteResponse.getId().toString(),
-                "textRaw", noteResponse.getTextRaw(),
-                "textStructured", noteResponse.getTextStructured(),
-                "createdAt", noteResponse.getCreatedAt().toString()
+                "textStructured", noteResponse.getTextStructured()
             ));
             result.put("inputText", rawText);
             result.put("processingTimeMs", 

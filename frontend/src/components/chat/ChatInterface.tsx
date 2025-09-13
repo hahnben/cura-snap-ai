@@ -157,48 +157,22 @@ const ChatInterfaceComponent = ({
           </Typography>
         </Box>
         
-        <Box sx={{ '& > *:not(:last-child)': { mb: 2 } }}>
-          <Box>
-            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>
-              Subjektiv (S):
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}>
-              {soap.subjective}
-            </Typography>
-          </Box>
-          
-          <Divider />
-          
-          <Box>
-            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>
-              Objektiv (O):
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}>
-              {soap.objective}
-            </Typography>
-          </Box>
-          
-          <Divider />
-          
-          <Box>
-            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>
-              Assessment (A):
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}>
-              {soap.assessment}
-            </Typography>
-          </Box>
-          
-          <Divider />
-          
-          <Box>
-            <Typography variant="subtitle2" sx={{ fontWeight: 'bold', color: 'text.secondary' }}>
-              Plan (P):
-            </Typography>
-            <Typography variant="body2" sx={{ mt: 0.5, whiteSpace: 'pre-wrap' }}>
-              {soap.plan}
-            </Typography>
-          </Box>
+        <Box
+          component="pre"
+          sx={{ 
+            whiteSpace: 'pre-wrap',
+            fontFamily: 'inherit',
+            fontSize: '0.875rem',
+            lineHeight: 1.6,
+            margin: 0,
+            padding: 2,
+            bgcolor: 'grey.50',
+            borderRadius: 1,
+            border: '1px solid',
+            borderColor: 'divider'
+          }}
+        >
+          {soap.textStructured || soap}
         </Box>
       </CardContent>
     </Card>

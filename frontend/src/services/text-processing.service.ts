@@ -40,11 +40,8 @@ export interface JobStatusResponse {
 }
 
 export interface SOAPResult {
-  subjective: string;
-  objective: string;
-  assessment: string;
-  plan: string;
-  [key: string]: any; // For additional fields
+  textStructured: string;
+  [key: string]: any; // For additional fields and backward compatibility
 }
 
 class TextProcessingService {
