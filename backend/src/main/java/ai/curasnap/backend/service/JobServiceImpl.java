@@ -609,6 +609,8 @@ public class JobServiceImpl implements JobService, QueueStatsProvider {
                 return "text_processing";
             case AUDIO_PROCESSING:
                 return "audio_processing";
+            case TRANSCRIPTION_ONLY:
+                return "transcription_only";
             case CACHE_WARMING:
                 return "cache_warming";
             default:

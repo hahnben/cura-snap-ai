@@ -8,7 +8,6 @@ import {
   CircularProgress,
   Alert,
   Chip,
-  Divider,
   Card,
   CardContent,
   Stack,
@@ -45,27 +44,27 @@ const ChatInterfaceComponent = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const addMessage = (message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
+  const addMessage = useCallback((message: Omit<ChatMessage, 'id' | 'timestamp'>) => {
     const newMessage: ChatMessage = {
       ...message,
       id: Math.random().toString(36).substr(2, 9),
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, newMessage]);
-    
+
     // Notify parent component if callback provided
     if (onMessage) {
       onMessage(newMessage);
     }
-    
-    return newMessage.id;
-  };
 
-  const updateMessage = (messageId: string, updates: Partial<ChatMessage>) => {
+    return newMessage.id;
+  }, [onMessage]);
+
+  const updateMessage = useCallback((messageId: string, updates: Partial<ChatMessage>) => {
     setMessages(prev =>
       prev.map(msg => (msg.id === messageId ? { ...msg, ...updates } : msg))
     );
-  };
+  }, []);
 
   const handleSubmit = useCallback(async () => {
     if (!inputText.trim() || isProcessing) return;
@@ -172,7 +171,7 @@ const ChatInterfaceComponent = ({
             borderColor: 'divider'
           }}
         >
-          {soap.textStructured || soap}
+          {typeof soap === 'string' ? soap : soap.textStructured || JSON.stringify(soap, null, 2)}
         </Box>
       </CardContent>
     </Card>
@@ -293,17 +292,16 @@ const ChatInterfaceComponent = ({
             {/* Audio Controls */}
             {enableAudio && (
               <AudioControls
-                recordingState={{
-                  isRecording: false,
-                  recordingTime: 0,
-                  audioPermission: 'prompt'
-                }}
-                onStartRecording={async () => {
-                  // Audio recording will be handled by AudioControls
-                  // When completed, it will call handleAudioMessage
-                }}
-                onStopRecording={() => {
-                  // Audio stopping will be handled by AudioControls
+                onTranscriptReady={(transcript: string, transcriptId?: string) => {
+                  // Insert transcript into text input field for user editing
+                  setInputText(transcript);
+
+                  // Add user message indicating this came from voice
+                  addMessage({
+                    type: 'system',
+                    content: `🎤 Sprachnotiz transkribiert${transcriptId ? ` (ID: ${transcriptId.substring(0, 8)}...)` : ''}: "${transcript.substring(0, 100)}${transcript.length > 100 ? '...' : ''}"`,
+                    source: 'audio',
+                  });
                 }}
                 disabled={currentIsProcessing}
               />

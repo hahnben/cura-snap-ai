@@ -159,16 +159,27 @@ public class TranscriptionService {
             );
         }
         
-        // Validate MIME type
+        // Validate MIME type with RFC 2046-compliant parsing
         String contentType = audioFile.getContentType();
-        if (contentType == null || !ALLOWED_MIME_TYPES.contains(contentType.toLowerCase())) {
-            logger.warn("Invalid MIME type for audio file {}: {}", 
-                SecurityUtils.sanitizeFilenameForLogging(originalFilename), 
-                SecurityUtils.sanitizeForLogging(contentType));
+        String baseMimeType = parseBaseMimeType(contentType);
+
+        if (baseMimeType == null || !ALLOWED_MIME_TYPES.contains(baseMimeType)) {
+            logger.warn("Invalid MIME type for audio file {}: {} (parsed as: {})",
+                SecurityUtils.sanitizeFilenameForLogging(originalFilename),
+                SecurityUtils.sanitizeForLogging(contentType),
+                SecurityUtils.sanitizeForLogging(baseMimeType));
             throw new TranscriptionException(
-                String.format("Invalid MIME type: %s (allowed: %s)", 
+                String.format("Invalid MIME type: %s (allowed: %s)",
                     contentType, String.join(", ", ALLOWED_MIME_TYPES))
             );
+        }
+
+        // Debug logging for successful MIME type parsing
+        if (contentType != null && !contentType.equals(baseMimeType)) {
+            logger.debug("Successfully parsed MIME type for audio file {}: {} → {}",
+                SecurityUtils.sanitizeFilenameForLogging(originalFilename),
+                SecurityUtils.sanitizeForLogging(contentType),
+                SecurityUtils.sanitizeForLogging(baseMimeType));
         }
         
         // Validate file content using magic numbers (only reads header, not full file)
@@ -184,13 +195,40 @@ public class TranscriptionService {
 
     /**
      * Extracts file extension from filename.
-     * 
+     *
      * @param filename the filename
      * @return the file extension including the dot
      */
     private String getFileExtension(String filename) {
         int lastDotIndex = filename.lastIndexOf('.');
         return lastDotIndex > 0 ? filename.substring(lastDotIndex) : "";
+    }
+
+    /**
+     * Parses the base MIME type from a content type string according to RFC 2046.
+     * Extracts the main type/subtype before any semicolon parameters.
+     *
+     * Examples:
+     * - "audio/webm;codecs=opus" → "audio/webm"
+     * - "audio/mp4; codecs=aac" → "audio/mp4"
+     * - "audio/wav" → "audio/wav"
+     * - null → null
+     *
+     * @param contentType the full content type string (may include parameters)
+     * @return the base MIME type in lowercase, or null if input is null/empty
+     */
+    private String parseBaseMimeType(String contentType) {
+        if (contentType == null || contentType.trim().isEmpty()) {
+            return null;
+        }
+
+        // Extract base type before first semicolon (RFC 2046 compliant)
+        int semicolonIndex = contentType.indexOf(';');
+        String baseType = semicolonIndex > 0
+            ? contentType.substring(0, semicolonIndex).trim()
+            : contentType.trim();
+
+        return baseType.toLowerCase();
     }
     
     /**

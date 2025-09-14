@@ -64,12 +64,14 @@ export interface DashboardHeaderProps {
  * Audio controls component props
  */
 export interface AudioControlsProps {
-  /** Current recording state */
-  recordingState: AudioRecordingState;
-  /** Start recording callback */
-  onStartRecording: () => Promise<void>;
-  /** Stop recording callback */
-  onStopRecording: () => void;
+  /** Current recording state (optional - component can manage its own state) */
+  recordingState?: AudioRecordingState;
+  /** Start recording callback (optional - component handles if not provided) */
+  onStartRecording?: () => Promise<void>;
+  /** Stop recording callback (optional - component handles if not provided) */
+  onStopRecording?: () => void;
+  /** Callback when transcript is ready from voice recording */
+  onTranscriptReady?: (transcript: string, transcriptId?: string) => void;
   /** Whether audio controls are disabled */
   disabled?: boolean;
 }
