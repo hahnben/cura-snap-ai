@@ -1,12 +1,17 @@
 import axios, { type AxiosInstance, type AxiosResponse, AxiosError } from 'axios';
 import { createClient } from '@supabase/supabase-js';
+import { validateAudioFile, validateGeneralFile, validateAudioFileHeader } from '../utils/fileValidation';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080';
 const REQUEST_TIMEOUT = 30000; // 30 seconds
 
 // Create Supabase client for token access
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables. Please check your .env.local file.');
+}
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 class ApiClient {
@@ -31,33 +36,21 @@ class ApiClient {
         try {
           const { data: { session } } = await supabase.auth.getSession();
           
-          // 🔍 JWT SESSION DEBUGGING
-          console.group('🔍 JWT Session Debug');
-          console.log('Session exists:', !!session);
-          console.log('User ID:', session?.user?.id);
-          console.log('User email:', session?.user?.email);
-          console.log('Token exists:', !!session?.access_token);
           if (session?.access_token) {
-            // Decode JWT to see claims (basic parsing)
-            try {
-              const payload = JSON.parse(atob(session.access_token.split('.')[1]));
-              console.log('JWT Claims:', {
-                role: payload.role,
-                aud: payload.aud,
-                exp: new Date(payload.exp * 1000),
-                iat: new Date(payload.iat * 1000),
-                email: payload.email,
-                sub: payload.sub
-              });
-            } catch (jwtError) {
-              console.warn('Could not decode JWT:', jwtError);
-            }
             config.headers.Authorization = `Bearer ${session.access_token}`;
-            console.log('✅ Authorization header set');
-          } else {
+
+            // 🔍 JWT SESSION DEBUGGING (Development only)
+            if (import.meta.env.DEV) {
+              console.group('🔍 JWT Session Debug');
+              console.log('Session exists:', !!session);
+              console.log('User ID:', session?.user?.id);
+              console.log('User email:', session?.user?.email);
+              console.log('✅ Authorization header set');
+              console.groupEnd();
+            }
+          } else if (import.meta.env.DEV) {
             console.warn('❌ No access token available');
           }
-          console.groupEnd();
           
         } catch (error) {
           console.error('❌ Failed to get Supabase session:', error);
@@ -74,15 +67,17 @@ class ApiClient {
     this.client.interceptors.response.use(
       (response: AxiosResponse) => response,
       async (error: AxiosError) => {
-        // 🔍 API ERROR DEBUGGING
-        console.group('🚨 API Error Debug');
-        console.error('Status:', error.response?.status);
-        console.error('URL:', error.config?.url);
-        console.error('Method:', error.config?.method?.toUpperCase());
-        console.error('Headers sent:', error.config?.headers);
-        console.error('Response data:', error.response?.data);
-        console.error('Full error:', error);
-        console.groupEnd();
+        // 🔍 API ERROR DEBUGGING (Development only)
+        if (import.meta.env.DEV) {
+          console.group('🚨 API Error Debug');
+          console.error('Status:', error.response?.status);
+          console.error('URL:', error.config?.url);
+          console.error('Method:', error.config?.method?.toUpperCase());
+          console.error('Headers sent:', error.config?.headers);
+          console.error('Response data:', error.response?.data);
+          console.error('Full error:', error);
+          console.groupEnd();
+        }
 
         // Handle specific error cases
         if (error.response?.status === 401) {
@@ -145,25 +140,66 @@ class ApiClient {
     return response.data;
   }
 
-  // File upload helper
+  // Secure file upload helper with validation
   async uploadFile<T>(
     url: string,
     file: File | Blob,
     fileName?: string,
-    additionalData?: Record<string, any>
+    additionalData?: Record<string, any>,
+    options?: {
+      validateAsAudio?: boolean;
+      maxSize?: number;
+      skipHeaderValidation?: boolean;
+    }
   ): Promise<T> {
-    const formData = new FormData();
-    
+    // Convert Blob to File for validation if needed
+    let fileToValidate: File;
     if (file instanceof File) {
-      formData.append('file', file);
+      fileToValidate = file;
     } else {
-      formData.append('file', file, fileName || 'recording.webm');
+      fileToValidate = new File([file], fileName || 'recording.webm', {
+        type: 'audio/webm'
+      });
     }
 
-    // Add additional form data
+    // Validate file based on type
+    let validationResult;
+    if (options?.validateAsAudio) {
+      validationResult = validateAudioFile(fileToValidate);
+
+      // Additional header validation for audio files
+      if (validationResult.isValid && !options.skipHeaderValidation) {
+        const isValidHeader = await validateAudioFileHeader(fileToValidate);
+        if (!isValidHeader) {
+          throw new Error('Invalid audio file format detected. File may be corrupted or not a valid audio file.');
+        }
+      }
+    } else {
+      validationResult = validateGeneralFile(fileToValidate, options?.maxSize);
+    }
+
+    if (!validationResult.isValid) {
+      throw new Error(validationResult.error || 'File validation failed');
+    }
+
+    const formData = new FormData();
+
+    // Use sanitized filename if available
+    if (file instanceof File) {
+      const sanitizedName = validationResult.sanitizedFileName || file.name;
+      formData.append('file', file, sanitizedName);
+    } else {
+      const sanitizedName = validationResult.sanitizedFileName || fileName || 'recording.webm';
+      formData.append('file', file, sanitizedName);
+    }
+
+    // Add additional form data with validation
     if (additionalData) {
       Object.entries(additionalData).forEach(([key, value]) => {
-        formData.append(key, String(value));
+        // Sanitize form data keys and values
+        const sanitizedKey = key.replace(/[^a-zA-Z0-9_]/g, '_');
+        const sanitizedValue = String(value).substring(0, 1000); // Limit value length
+        formData.append(sanitizedKey, sanitizedValue);
       });
     }
 
@@ -173,8 +209,21 @@ class ApiClient {
       },
       timeout: 120000, // 2 minutes for file uploads
     });
-    
+
     return response.data;
+  }
+
+  // Convenience method for audio uploads with strict validation
+  async uploadAudioFile<T>(
+    url: string,
+    audioFile: File | Blob,
+    fileName?: string,
+    additionalData?: Record<string, any>
+  ): Promise<T> {
+    return this.uploadFile<T>(url, audioFile, fileName, additionalData, {
+      validateAsAudio: true,
+      skipHeaderValidation: false,
+    });
   }
 }
 

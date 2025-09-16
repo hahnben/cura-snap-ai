@@ -13,9 +13,14 @@ import {
 import { Lock, Save } from '@mui/icons-material';
 import { createClient } from '@supabase/supabase-js';
 import { useError } from '../contexts/ErrorContext';
+import { validatePassword } from '../utils/inputValidation';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables. Please check your .env.local file.');
+}
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export function ResetPasswordPage() {
@@ -42,18 +47,10 @@ export function ResetPasswordPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!password.trim()) {
-      showError('Bitte geben Sie ein neues Passwort ein.');
-      return;
-    }
-
-    if (password.length < 6) {
-      showError('Das Passwort muss mindestens 6 Zeichen lang sein.');
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      showError('Die Passwörter stimmen nicht überein.');
+    // Enhanced password validation
+    const passwordValidation = validatePassword(password, confirmPassword);
+    if (!passwordValidation.isValid) {
+      showError(passwordValidation.error!);
       return;
     }
 
@@ -64,14 +61,27 @@ export function ResetPasswordPage() {
       });
 
       if (error) {
-        showError(`Fehler beim Passwort-Update: ${error.message}`);
+        // Sanitize error messages
+        let errorMessage = 'Fehler beim Passwort-Update.';
+
+        if (error.message.includes('session_not_found')) {
+          errorMessage = 'Sitzung ist abgelaufen. Bitte fordern Sie einen neuen Reset-Link an.';
+        } else if (error.message.includes('weak_password')) {
+          errorMessage = 'Das Passwort ist zu schwach. Bitte wählen Sie ein sichereres Passwort.';
+        }
+
+        showError(errorMessage);
       } else {
         showError('Passwort erfolgreich aktualisiert!', 'success');
         setTimeout(() => navigate('/'), 2000);
       }
     } catch (err) {
-      showError('Ein unerwarteter Fehler ist aufgetreten.');
-      console.error('Password update error:', err);
+      showError('Ein Fehler ist aufgetreten. Bitte versuchen Sie es erneut.');
+
+      // Log error for debugging (only in development)
+      if (import.meta.env.DEV) {
+        console.error('Password update error:', err);
+      }
     } finally {
       setLoading(false);
     }

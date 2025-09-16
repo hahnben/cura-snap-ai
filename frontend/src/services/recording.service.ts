@@ -17,7 +17,8 @@ class RecordingService {
 
   async processAudio(sessionId: string, audioBlob: Blob): Promise<{ message: Message; soapNote: SOAPNote }> {
     try {
-      const response = await apiClient.uploadFile<ProcessAudioResponse>(
+      // Use secure audio upload with validation
+      const response = await apiClient.uploadAudioFile<ProcessAudioResponse>(
         `${this.basePath}/process`,
         audioBlob,
         `recording-${Date.now()}.webm`,
@@ -96,7 +97,8 @@ class RecordingService {
 
   async transcribeAudio(audioBlob: Blob): Promise<string> {
     try {
-      const response = await apiClient.uploadFile<{ transcription: string }>(
+      // Use secure audio upload with validation
+      const response = await apiClient.uploadAudioFile<{ transcription: string }>(
         '/api/transcription/transcribe',
         audioBlob,
         `audio-${Date.now()}.webm`

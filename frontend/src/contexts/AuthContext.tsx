@@ -2,9 +2,14 @@ import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import type { User, Session } from '@supabase/supabase-js';
+import { secureStorage, medicalStorage } from '../utils/secureStorage';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'http://localhost:54321';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables. Please check your .env.local file.');
+}
 
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
@@ -38,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (session) {
         const loginTime = Date.now();
         setTimeRemaining(SESSION_TIMEOUT);
-        sessionStorage.setItem('loginTime', loginTime.toString());
+        secureStorage.setItem('loginTime', loginTime, { ttl: SESSION_TIMEOUT });
       }
     });
 
@@ -52,12 +57,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (event === 'SIGNED_IN' && session) {
           const loginTime = Date.now();
           setTimeRemaining(SESSION_TIMEOUT);
-          
-          // Store login time in sessionStorage for persistence
-          sessionStorage.setItem('loginTime', loginTime.toString());
+
+          // Store login time securely with automatic expiration
+          secureStorage.setItem('loginTime', loginTime, { ttl: SESSION_TIMEOUT });
         } else if (event === 'SIGNED_OUT') {
           setTimeRemaining(SESSION_TIMEOUT);
-          sessionStorage.removeItem('loginTime');
+
+          // Clear all sensitive data on sign out
+          secureStorage.clear();
+          medicalStorage.emergencyWipe();
         }
       }
     );
@@ -70,16 +78,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!session) return;
 
     const interval = setInterval(() => {
-      const loginTime = parseInt(sessionStorage.getItem('loginTime') || '0');
+      const loginTime = secureStorage.getItem<number>('loginTime');
       if (loginTime) {
         const elapsed = Date.now() - loginTime;
         const remaining = Math.max(0, SESSION_TIMEOUT - elapsed);
         setTimeRemaining(remaining);
-        
+
         // Auto logout when session expires
         if (remaining === 0) {
           signOut();
         }
+      } else if (session) {
+        // Login time not found but session exists - security measure
+        signOut();
       }
     }, 1000);
 
@@ -99,9 +110,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (!error) {
-      sessionStorage.removeItem('loginTime');
+    try {
+      // Clear all sensitive data before signing out
+      secureStorage.clear();
+      medicalStorage.emergencyWipe();
+
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.warn('Sign out error:', error);
+      }
+    } catch (error) {
+      console.warn('Error during sign out:', error);
+      // Force cleanup even if sign out fails
+      secureStorage.clear();
+      medicalStorage.emergencyWipe();
     }
   };
 

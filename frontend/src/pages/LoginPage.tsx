@@ -12,6 +12,7 @@ import {
 import { Email, Login, Lock } from '@mui/icons-material';
 import { useAuth } from '../contexts/AuthContext';
 import { useError } from '../contexts/ErrorContext';
+import { validateEmail, validatePassword, checkLoginRateLimit, loginRateLimiter } from '../utils/inputValidation';
 
 export function LoginPage() {
   const [email, setEmail] = useState('');
@@ -22,36 +23,66 @@ export function LoginPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!email.trim()) {
-      showError('Bitte geben Sie eine E-Mail-Adresse ein.');
+
+    // Enhanced email validation
+    const emailValidation = validateEmail(email);
+    if (!emailValidation.isValid) {
+      showError(emailValidation.error!);
       return;
     }
 
+    // Basic password validation (not full requirements for login)
     if (!password.trim()) {
       showError('Bitte geben Sie ein Passwort ein.');
       return;
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      showError('Bitte geben Sie eine gültige E-Mail-Adresse ein.');
+    if (password.length > 128) {
+      showError('Passwort ist zu lang.');
+      return;
+    }
+
+    // Check rate limiting
+    const rateLimitCheck = checkLoginRateLimit(emailValidation.sanitizedValue!);
+    if (!rateLimitCheck.allowed) {
+      showError(rateLimitCheck.message!);
       return;
     }
 
     setLoading(true);
+
     try {
-      const { error } = await signIn(email, password);
-      
+      // Record login attempt for rate limiting
+      loginRateLimiter.recordAttempt(emailValidation.sanitizedValue!);
+
+      const { error } = await signIn(emailValidation.sanitizedValue!, password);
+
       if (error) {
-        showError(`Anmeldung fehlgeschlagen: ${error.message}`);
+        // Sanitize error messages to prevent information disclosure
+        let errorMessage = 'Anmeldung fehlgeschlagen.';
+
+        if (error.message.includes('Invalid login credentials')) {
+          errorMessage = 'E-Mail oder Passwort sind nicht korrekt.';
+        } else if (error.message.includes('Email not confirmed')) {
+          errorMessage = 'Bitte bestätigen Sie Ihre E-Mail-Adresse.';
+        } else if (error.message.includes('Too many requests')) {
+          errorMessage = 'Zu viele Anmeldeversuche. Bitte warten Sie einen Moment.';
+        }
+
+        showError(errorMessage);
       } else {
-        // Authentication successful - user will be redirected automatically
+        // Clear rate limiting on successful login
+        loginRateLimiter.clear(emailValidation.sanitizedValue!);
         showError('Anmeldung erfolgreich!', 'success');
       }
     } catch (err) {
-      showError('Ein unerwarteter Fehler ist aufgetreten. Bitte versuchen Sie es erneut.');
-      console.error('Login error:', err);
+      // Generic error message to prevent information disclosure
+      showError('Ein Fehler ist aufgetreten. Bitte versuchen Sie es später erneut.');
+
+      // Log error for debugging (only in development)
+      if (import.meta.env.DEV) {
+        console.error('Login error:', err);
+      }
     } finally {
       setLoading(false);
     }
