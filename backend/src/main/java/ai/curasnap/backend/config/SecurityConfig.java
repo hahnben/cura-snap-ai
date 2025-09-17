@@ -70,8 +70,11 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         
         // Allow specific origins - add production origins here when needed
-        configuration.addAllowedOrigin("http://localhost:5173"); // Vite dev server
-        configuration.addAllowedOrigin("http://localhost:3000");  // Alternative React dev server
+        configuration.addAllowedOrigin("http://localhost:5173");  // Vite dev server (HTTP)
+        configuration.addAllowedOrigin("https://localhost:5173"); // Vite dev server (HTTPS)
+        configuration.addAllowedOrigin("https://localhost:5174"); // Vite dev server (HTTPS - alternative port)
+        configuration.addAllowedOrigin("http://localhost:3000");  // Alternative React dev server (HTTP)
+        configuration.addAllowedOrigin("https://localhost:3000"); // Alternative React dev server (HTTPS)
         
         // Allow common HTTP methods
         configuration.addAllowedMethod("GET");
