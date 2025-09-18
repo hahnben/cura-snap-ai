@@ -18,6 +18,6 @@ class Config:
     ALLOWED_EXTENSIONS = {'.mp3', '.wav', '.webm', '.m4a', '.ogg', '.flac'}
     
     # Logging
-    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "DEBUG")  # Temporary DEBUG for voice recording analysis
 
 config = Config()

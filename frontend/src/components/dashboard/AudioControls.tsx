@@ -116,7 +116,15 @@ const AudioControlsComponent = ({
         { type: mimeType }
       );
 
-      console.log(`Audio file created: ${audioFile.size} bytes, ${audioFile.type}`);
+      console.log('🎵 Audio file created:', {
+        size: `${audioFile.size} bytes (${(audioFile.size / 1024 / 1024).toFixed(2)} MB)`,
+        type: audioFile.type,
+        name: audioFile.name,
+        extension,
+        originalMimeType: mimeType,
+        chunksCount: audioChunks.current.length,
+        estimatedDuration: `${Math.round(internalState.recordingTime / 1000)}s`
+      });
 
       // Start transcription process
       setInternalState(prev => ({
@@ -183,26 +191,50 @@ const AudioControlsComponent = ({
     try {
       setInternalState(prev => ({ ...prev, phase: 'recording', isRecording: true, recordingTime: 0 }));
 
-      // Get audio stream
+      // Get audio stream with optimized parameters for HTTPS/medical transcription
       audioStream.current = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 44100,
+          autoGainControl: true,
+          sampleRate: 48000,          // Higher sample rate for better quality
+          sampleSize: 16,             // 16-bit audio
+          channelCount: 1,            // Mono audio for medical transcription
+          volume: 1.0,                // Maximum volume
+          latency: 0.1,               // Low latency for real-time processing
         }
       });
 
-      // Configure MediaRecorder for better compatibility
+      // Configure MediaRecorder with optimized settings for medical transcription
       const options: MediaRecorderOptions = {};
 
-      // Try different MIME types for better compatibility
-      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+      // Prioritize high-quality formats with explicit bitrate for better Whisper compatibility
+      if (MediaRecorder.isTypeSupported('audio/wav')) {
+        options.mimeType = 'audio/wav';
+        options.bitsPerSecond = 128000; // 128 kbps for WAV
+      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
         options.mimeType = 'audio/webm;codecs=opus';
+        options.bitsPerSecond = 128000; // 128 kbps for Opus
+      } else if (MediaRecorder.isTypeSupported('audio/mp4;codecs=mp4a.40.2')) {
+        options.mimeType = 'audio/mp4;codecs=mp4a.40.2'; // AAC-LC codec
+        options.bitsPerSecond = 128000; // 128 kbps for AAC
       } else if (MediaRecorder.isTypeSupported('audio/webm')) {
         options.mimeType = 'audio/webm';
+        options.bitsPerSecond = 128000;
       } else if (MediaRecorder.isTypeSupported('audio/mp4')) {
         options.mimeType = 'audio/mp4';
+        options.bitsPerSecond = 128000;
       }
+
+      console.log('🎙️ MediaRecorder configured:', {
+        mimeType: options.mimeType,
+        bitsPerSecond: options.bitsPerSecond,
+        audioConstraints: {
+          sampleRate: 48000,
+          channelCount: 1,
+          sampleSize: 16
+        }
+      });
 
       mediaRecorder.current = new MediaRecorder(audioStream.current, options);
       audioChunks.current = [];

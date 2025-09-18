@@ -3,6 +3,7 @@ package ai.curasnap.backend.service;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ByteArrayResource;
 import java.io.InputStream;
@@ -66,7 +67,7 @@ public class TranscriptionService {
 
     @Autowired
     public TranscriptionService(
-            RestTemplate restTemplate,
+            @Qualifier("internal") RestTemplate restTemplate,
             @Value("${transcription.service.url:http://localhost:8002}") String transcriptionServiceUrl,
             @Value("${transcription.service.enabled:true}") boolean transcriptionServiceEnabled,
             @Value("${transcription.service.timeout:30000}") int transcriptionServiceTimeout) {
@@ -105,14 +106,32 @@ public class TranscriptionService {
             
             logger.debug("Sending validated audio file to Transcription Service at: {}", url);
             ResponseEntity<TranscriptionResponse> response = restTemplate.postForEntity(url, entity, TranscriptionResponse.class);
-            
+
+            // Detailed logging for debugging
+            logger.debug("Transcription Service Response - Status: {}, Headers: {}",
+                response.getStatusCode(), response.getHeaders());
+
             if (response.getBody() != null) {
-                String transcript = response.getBody().transcript;
-                logger.debug("Successfully received transcript from Transcription Service");
-                return transcript;
+                TranscriptionResponse responseBody = response.getBody();
+                logger.debug("Response body object: {}", responseBody);
+
+                String transcript = responseBody.transcript;
+                logger.debug("Extracted transcript field: '{}' (length: {})",
+                    transcript, transcript != null ? transcript.length() : "null");
+
+                if (transcript != null && !transcript.trim().isEmpty()) {
+                    logger.info("Successfully received transcript from Transcription Service: {} characters",
+                        transcript.length());
+                    return transcript;
+                } else {
+                    logger.warn("Transcription Service returned empty or null transcript. Response body: {}", responseBody);
+                    // This is expected behavior for audio without speech - return null for graceful handling
+                    return null;
+                }
             } else {
-                logger.warn("Transcription Service returned empty response");
-                throw new TranscriptionException("Empty response from transcription service");
+                logger.warn("Transcription Service returned null response body. Status: {}, Headers: {}",
+                    response.getStatusCode(), response.getHeaders());
+                throw new TranscriptionException("Null response body from transcription service");
             }
             
         } catch (RestClientException e) {
@@ -333,6 +352,13 @@ public class TranscriptionService {
 
         public void setTranscript(String transcript) {
             this.transcript = transcript;
+        }
+
+        @Override
+        public String toString() {
+            return "TranscriptionResponse{" +
+                    "transcript='" + (transcript != null ? transcript.substring(0, Math.min(transcript.length(), 100)) + (transcript.length() > 100 ? "..." : "") : "null") + '\'' +
+                    '}';
         }
     }
 
