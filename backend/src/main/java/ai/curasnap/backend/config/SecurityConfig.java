@@ -30,6 +30,14 @@ public class SecurityConfig {
     private String jwtSecret;
 
     /**
+     * Development CORS patterns for external tunneling services (ngrok, etc.).
+     * Comma-separated list of origin patterns like "https://*.ngrok-free.app".
+     * Only active when explicitly configured - defaults to empty for security.
+     */
+    @Value("${cors.development.patterns:}")
+    private String developmentCorsPatterns;
+
+    /**
      * Defines which HTTP endpoints require authentication.
      * - /api/** requires valid JWT
      * - all other endpoints are publicly accessible
@@ -64,18 +72,30 @@ public class SecurityConfig {
     /**
      * Configure CORS to allow frontend access from development environment
      * Allows localhost:5173 (Vite dev server) to access /api endpoints
+     * Also supports development patterns for external tunneling (ngrok, etc.)
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        
-        // Allow specific origins - add production origins here when needed
+
+        // Allow specific localhost origins for development
         configuration.addAllowedOrigin("http://localhost:5173");  // Vite dev server (HTTP)
         configuration.addAllowedOrigin("https://localhost:5173"); // Vite dev server (HTTPS)
         configuration.addAllowedOrigin("https://localhost:5174"); // Vite dev server (HTTPS - alternative port)
         configuration.addAllowedOrigin("http://localhost:3000");  // Alternative React dev server (HTTP)
         configuration.addAllowedOrigin("https://localhost:3000"); // Alternative React dev server (HTTPS)
-        
+
+        // Add development patterns for external tunneling (ngrok, etc.)
+        if (developmentCorsPatterns != null && !developmentCorsPatterns.trim().isEmpty()) {
+            String[] patterns = developmentCorsPatterns.split(",");
+            for (String pattern : patterns) {
+                String trimmedPattern = pattern.trim();
+                if (!trimmedPattern.isEmpty()) {
+                    configuration.addAllowedOriginPattern(trimmedPattern);
+                }
+            }
+        }
+
         // Allow common HTTP methods
         configuration.addAllowedMethod("GET");
         configuration.addAllowedMethod("POST");
@@ -83,23 +103,23 @@ public class SecurityConfig {
         configuration.addAllowedMethod("DELETE");
         configuration.addAllowedMethod("OPTIONS");
         configuration.addAllowedMethod("PATCH");
-        
+
         // Allow necessary headers
         configuration.addAllowedHeader("Authorization");
         configuration.addAllowedHeader("Content-Type");
         configuration.addAllowedHeader("X-Requested-With");
         configuration.addAllowedHeader("Accept");
         configuration.addAllowedHeader("Origin");
-        
+
         // Allow credentials (needed for JWT tokens)
         configuration.setAllowCredentials(true);
-        
+
         // Cache preflight responses for 1 hour
         configuration.setMaxAge(3600L);
-        
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/api/**", configuration);
-        
+
         return source;
     }
 }
