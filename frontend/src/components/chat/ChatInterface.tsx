@@ -288,52 +288,103 @@ const ChatInterfaceComponent = ({
       {/* Input */}
       <Card>
         <CardContent>
-          <Stack direction="row" spacing={1} alignItems="flex-end">
-            {/* Audio Controls */}
+          <Stack spacing={2}>
+            {/* Audio Section - Prominent */}
             {enableAudio && (
-              <AudioControls
-                onTranscriptReady={(transcript: string, transcriptId?: string) => {
-                  // Insert transcript into text input field for user editing
-                  setInputText(transcript);
-
-                  // Add user message indicating this came from voice
-                  addMessage({
-                    type: 'system',
-                    content: `🎤 Sprachnotiz transkribiert${transcriptId ? ` (ID: ${transcriptId.substring(0, 8)}...)` : ''}: "${transcript.substring(0, 100)}${transcript.length > 100 ? '...' : ''}"`,
-                    source: 'audio',
-                  });
+              <Box
+                sx={{
+                  p: 2,
+                  bgcolor: 'primary.50',
+                  borderRadius: 2,
+                  border: '2px solid',
+                  borderColor: 'primary.main',
+                  minHeight: '64px'
                 }}
-                disabled={currentIsProcessing}
-              />
+                role="group"
+                aria-labelledby="audio-section-title"
+              >
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Typography
+                    id="audio-section-title"
+                    variant="h6"
+                    color="primary.main"
+                    sx={{ minWidth: 'fit-content' }}
+                  >
+                    🎤 Sprachnotiz
+                  </Typography>
+
+                  <AudioControls
+                    onTranscriptReady={(transcript: string, transcriptId?: string) => {
+                      // Insert transcript into text input field for user editing
+                      setInputText(transcript);
+
+                      // Add user message indicating this came from voice
+                      addMessage({
+                        type: 'system',
+                        content: `🎤 Sprachnotiz transkribiert${transcriptId ? ` (ID: ${transcriptId.substring(0, 8)}...)` : ''}: "${transcript.substring(0, 100)}${transcript.length > 100 ? '...' : ''}"`,
+                        source: 'audio',
+                      });
+                    }}
+                    disabled={currentIsProcessing}
+                  />
+
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{ flex: 1 }}
+                    id="audio-guidance-text"
+                  >
+                    Klicken Sie auf das Mikrofon für eine neue Patientennotiz
+                  </Typography>
+                </Stack>
+              </Box>
             )}
 
-            {/* Text Input */}
-            <TextField
-              fullWidth
-              multiline
-              maxRows={4}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyPress={handleKeyPress}
-              placeholder={placeholder}
-              disabled={currentIsProcessing}
-              variant="outlined"
-              size="small"
-              aria-label="Patientennotiz eingeben"
-              inputProps={{
-                'aria-describedby': 'input-help-text'
-              }}
-            />
-
-            {/* Send Button */}
-            <IconButton
-              onClick={handleSubmit}
-              disabled={!inputText.trim() || currentIsProcessing}
-              color="primary"
-              aria-label="Nachricht senden"
+            {/* Text Section - Secondary but Accessible */}
+            <Stack
+              direction="row"
+              spacing={1}
+              alignItems="flex-end"
+              role="group"
+              aria-labelledby="text-section-title"
             >
-              {currentIsProcessing ? <CircularProgress size={24} /> : <SendIcon />}
-            </IconButton>
+              <Typography
+                id="text-section-title"
+                variant="body2"
+                color="text.secondary"
+                sx={{ minWidth: 'fit-content', alignSelf: 'center' }}
+              >
+                📝 Alternativ:
+              </Typography>
+
+              <TextField
+                fullWidth
+                multiline
+                maxRows={4}
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder={placeholder}
+                disabled={currentIsProcessing}
+                variant="outlined"
+                size="small"
+                aria-label="Patientennotiz eingeben"
+                inputProps={{
+                  'aria-describedby': 'input-help-text audio-guidance-text'
+                }}
+              />
+
+              {/* Send Button */}
+              <IconButton
+                onClick={handleSubmit}
+                disabled={!inputText.trim() || currentIsProcessing}
+                color="primary"
+                aria-label="Nachricht senden"
+                sx={{ minHeight: '44px', minWidth: '44px' }}
+              >
+                {currentIsProcessing ? <CircularProgress size={24} /> : <SendIcon />}
+              </IconButton>
+            </Stack>
           </Stack>
           
           {/* Screen reader helper text */}
