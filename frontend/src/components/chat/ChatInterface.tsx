@@ -288,75 +288,70 @@ const ChatInterfaceComponent = ({
       {/* Input */}
       <Card>
         <CardContent>
-          <Stack spacing={2}>
-            {/* Audio Section - Prominent */}
+          <Stack spacing={3}>
+            {/* Audio Section - Prominent Central Button */}
             {enableAudio && (
               <Box
                 sx={{
-                  p: 2,
-                  bgcolor: 'primary.50',
-                  borderRadius: 2,
-                  border: '2px solid',
-                  borderColor: 'primary.main',
-                  minHeight: '64px'
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  py: 3,
+                  gap: 2
                 }}
                 role="group"
-                aria-labelledby="audio-section-title"
+                aria-labelledby="audio-section-guidance"
               >
-                <Stack direction="row" spacing={2} alignItems="center">
-                  <Typography
-                    id="audio-section-title"
-                    variant="h6"
-                    color="primary.main"
-                    sx={{ minWidth: 'fit-content' }}
-                  >
-                    🎤 Sprachnotiz
-                  </Typography>
+                <Typography
+                  id="audio-section-guidance"
+                  variant="body1"
+                  color="text.secondary"
+                  textAlign="center"
+                  sx={{ mb: 1 }}
+                >
+                  Klicken Sie auf das Mikrofon für eine neue Patientennotiz
+                </Typography>
 
-                  <AudioControls
-                    onTranscriptReady={(transcript: string, transcriptId?: string) => {
-                      // Insert transcript into text input field for user editing
-                      setInputText(transcript);
+                <AudioControls
+                  onTranscriptReady={(transcript: string, transcriptId?: string) => {
+                    // Insert transcript into text input field for user editing
+                    setInputText(transcript);
 
-                      // Add user message indicating this came from voice
-                      addMessage({
-                        type: 'system',
-                        content: `🎤 Sprachnotiz transkribiert${transcriptId ? ` (ID: ${transcriptId.substring(0, 8)}...)` : ''}: "${transcript.substring(0, 100)}${transcript.length > 100 ? '...' : ''}"`,
-                        source: 'audio',
-                      });
-                    }}
-                    disabled={currentIsProcessing}
-                  />
-
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                    sx={{ flex: 1 }}
-                    id="audio-guidance-text"
-                  >
-                    Klicken Sie auf das Mikrofon für eine neue Patientennotiz
-                  </Typography>
-                </Stack>
+                    // Add user message indicating this came from voice
+                    addMessage({
+                      type: 'system',
+                      content: `🎤 Sprachnotiz transkribiert${transcriptId ? ` (ID: ${transcriptId.substring(0, 8)}...)` : ''}: "${transcript.substring(0, 100)}${transcript.length > 100 ? '...' : ''}"`,
+                      source: 'audio',
+                    });
+                  }}
+                  disabled={currentIsProcessing}
+                />
               </Box>
             )}
 
-            {/* Text Section - Secondary but Accessible */}
+            {/* Subtle Divider */}
+            {enableAudio && (
+              <Box sx={{ display: 'flex', alignItems: 'center', mx: 2 }}>
+                <Box sx={{ flex: 1, height: '1px', bgcolor: 'divider' }} />
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mx: 2, fontSize: '0.875rem' }}
+                >
+                  oder
+                </Typography>
+                <Box sx={{ flex: 1, height: '1px', bgcolor: 'divider' }} />
+              </Box>
+            )}
+
+            {/* Text Section - Clean and Simple */}
             <Stack
               direction="row"
               spacing={1}
               alignItems="flex-end"
               role="group"
-              aria-labelledby="text-section-title"
+              aria-label="Text-Eingabe Bereich"
             >
-              <Typography
-                id="text-section-title"
-                variant="body2"
-                color="text.secondary"
-                sx={{ minWidth: 'fit-content', alignSelf: 'center' }}
-              >
-                📝 Alternativ:
-              </Typography>
-
               <TextField
                 fullWidth
                 multiline
@@ -364,13 +359,13 @@ const ChatInterfaceComponent = ({
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder={placeholder}
+                placeholder="Oder hier eine Patientennotiz eingeben..."
                 disabled={currentIsProcessing}
                 variant="outlined"
                 size="small"
                 aria-label="Patientennotiz eingeben"
                 inputProps={{
-                  'aria-describedby': 'input-help-text audio-guidance-text'
+                  'aria-describedby': 'input-help-text'
                 }}
               />
 
