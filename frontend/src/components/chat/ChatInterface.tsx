@@ -16,7 +16,8 @@ import {
 import {
   Send as SendIcon,
   Clear as ClearIcon,
-  Description as DocumentIcon
+  Description as DocumentIcon,
+  ContentCopy as ContentCopyIcon
 } from '@mui/icons-material';
 import { textProcessingService } from '../../services/text-processing.service';
 import type { JobStatusResponse, SOAPResult } from '../../services/text-processing.service';
@@ -143,11 +144,32 @@ const ChatInterfaceComponent = ({
   const renderSOAPNote = (soap: SOAPResult) => (
     <Card sx={{ mt: 2, bgcolor: 'background.default' }}>
       <CardContent>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <DocumentIcon sx={{ mr: 1, color: 'primary.main' }} />
-          <Typography variant="h6" color="primary">
-            SOAP-Note
-          </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <DocumentIcon sx={{ mr: 1, color: 'primary.main' }} />
+            <Typography variant="h6" color="primary">
+              SOAP-Note
+            </Typography>
+          </Box>
+          <IconButton
+            onClick={() => {
+              const textToCopy = typeof soap === 'string' ? soap : soap.textStructured || JSON.stringify(soap, null, 2);
+              navigator.clipboard.writeText(textToCopy).catch(() => {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = textToCopy;
+                document.body.appendChild(textArea);
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+              });
+            }}
+            size="small"
+            aria-label="SOAP-Note in Zwischenablage kopieren"
+            title="In Zwischenablage kopieren"
+          >
+            <ContentCopyIcon fontSize="small" />
+          </IconButton>
         </Box>
         
         <Box
