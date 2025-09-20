@@ -71,12 +71,6 @@ const ChatInterfaceComponent = ({
 
     const userText = inputText.trim();
     setInputText('');
-    
-    // Add user message
-    addMessage({
-      type: 'user',
-      content: userText,
-    });
 
     // Add processing message
     const processingMessageId = addMessage({
@@ -184,6 +178,7 @@ const ChatInterfaceComponent = ({
         mb: 2,
         display: 'flex',
         flexDirection: message.type === 'user' ? 'row-reverse' : 'row',
+        justifyContent: message.soapResult ? 'center' : undefined,
       }}
     >
       <Paper
@@ -316,13 +311,6 @@ const ChatInterfaceComponent = ({
                   onTranscriptReady={(transcript: string, transcriptId?: string) => {
                     // Insert transcript into text input field for user editing
                     setInputText(transcript);
-
-                    // Add user message indicating this came from voice
-                    addMessage({
-                      type: 'system',
-                      content: `🎤 Sprachnotiz transkribiert${transcriptId ? ` (ID: ${transcriptId.substring(0, 8)}...)` : ''}: "${transcript.substring(0, 100)}${transcript.length > 100 ? '...' : ''}"`,
-                      source: 'audio',
-                    });
                   }}
                   disabled={currentIsProcessing}
                 />
