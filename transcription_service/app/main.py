@@ -24,14 +24,14 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Transcription Service", version="1.0.0")
 
 # Load Whisper model on startup
-model = None
+from .dependencies import get_whisper_model
+from fastapi import Depends
 
 @app.on_event("startup")
 async def startup_event():
-    global model
     try:
         logger.info(f"Loading Whisper model: {config.WHISPER_MODEL}")
-        model = whisper.load_model(config.WHISPER_MODEL)
+        model = get_whisper_model()  # This will cache the model
         logger.info("Whisper model loaded successfully")
     except Exception as e:
         logger.error(f"Failed to load Whisper model: {e}")
@@ -43,16 +43,24 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "model_loaded": model is not None}
+    try:
+        model = get_whisper_model()
+        return {"status": "healthy", "model_loaded": model is not None}
+    except Exception:
+        return {"status": "unhealthy", "model_loaded": False}
 
 @app.post("/transcribe")
-async def transcribe_audio(file: UploadFile = File(...)) -> Dict[str, str]:
+async def transcribe_audio(
+    file: UploadFile = File(...),
+    model: whisper.Whisper = Depends(get_whisper_model)
+) -> Dict[str, str]:
     """
     Transcribe audio file to text using the configured transcription engine.
-    
+
     Args:
         file: Audio file (supported formats: .mp3, .wav, .webm, .m4a)
-    
+        model: Whisper model instance (injected)
+
     Returns:
         JSON response with transcribed text
     """
