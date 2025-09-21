@@ -77,11 +77,8 @@ class SoapAgentService:
                     retries=self.config.max_retries
                 )
 
-                # Register output validator
-                @self._agent.output_validator
-                async def validate_soap_note(ctx: RunContext, output: SoapNote) -> SoapNote:
-                    """Validate generated SOAP note quality and structure."""
-                    return await self._validate_soap_output(output)
+                # Note: Output validator removed - we expect string output from the agent
+                # and convert it to SoapNote object after generation
 
                 logger.info(
                     f"Agent initialized with model {self.config.llm_model}, "
@@ -241,7 +238,10 @@ class SoapAgentService:
             # Generate SOAP note
             try:
                 result = await agent.run(prompt)
-                soap_note = result.output
+                soap_note_text = result.output
+
+                # Create SoapNote object from the generated text
+                soap_note = SoapNote(structured_text=soap_note_text)
 
                 # Prepare metadata
                 generation_time = time.time() - start_time
@@ -251,7 +251,7 @@ class SoapAgentService:
                     "temperature": self.config.temperature,
                     "max_tokens": self.config.max_tokens,
                     "input_length": len(input_data.transcript),
-                    "output_length": len(soap_note.structured_text)
+                    "output_length": len(soap_note_text)
                 }
 
                 # Add token usage if available

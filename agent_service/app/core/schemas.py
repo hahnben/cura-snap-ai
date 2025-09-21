@@ -28,7 +28,7 @@ class SoapNote(BaseModel):
         ...,
         description="Generated SOAP note in structured format",
         example=(
-            "ANAMNESE:\nDer Patient berichtet über...\n\n"
+            "ANAMNESE:\nDer Patient berichtet Ã¼ber...\n\n"
             "UNTERSUCHUNG und BEFUNDE:\n...\n\n"
             "BEURTEILUNG:\n...\n\n"
             "PROZEDERE und THERAPIE:\n...\n\n"
@@ -41,7 +41,7 @@ class SoapNote(BaseModel):
         json_schema_extra = {
             "example": {
                 "structured_text": (
-                    "ANAMNESE:\nDer Patient berichtet über...\n\n"
+                    "ANAMNESE:\nDer Patient berichtet Ã¼ber...\n\n"
                     "UNTERSUCHUNG und BEFUNDE:\n...\n\n"
                     "BEURTEILUNG:\n...\n\n"
                     "PROZEDERE und THERAPIE:\n...\n\n"

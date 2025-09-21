@@ -63,7 +63,7 @@ class AgentServiceClientTest {
         
         // Verify the request
         RecordedRequest request = mockWebServer.takeRequest();
-        assertEquals("/soap/format_note", request.getPath());
+        assertEquals("/api/soap/format_note", request.getPath());
         assertEquals("POST", request.getMethod());
         assertEquals("application/json", request.getHeader("Content-Type"));
         
