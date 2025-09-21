@@ -19,15 +19,12 @@ import {
 } from '@mui/material';
 import {
   Chat,
-  Psychology,
-  Storage,
-  History,
-  Assessment,
-  Settings,
   PersonAdd,
   Edit,
   Check,
   Close,
+  Assignment,
+  Summarize,
 } from '@mui/icons-material';
 import { usePatientSession } from '../../contexts/PatientSessionContext';
 
@@ -55,39 +52,16 @@ const navigationSections: NavigationSection[] = [
     active: true,
   },
   {
-    id: 'clinical-decision',
-    label: 'Clinical Decision Support',
-    icon: <Psychology />,
+    id: 'referrals-assistant',
+    label: 'Referrals Assistant',
+    icon: <Assignment />,
     active: false,
-    comingSoon: true,
   },
   {
-    id: 'medical-database',
-    label: 'Medical Database',
-    icon: <Storage />,
+    id: 'summaries-assistant',
+    label: 'Summaries Assistant',
+    icon: <Summarize />,
     active: false,
-    comingSoon: true,
-  },
-  {
-    id: 'patient-history',
-    label: 'Patient History',
-    icon: <History />,
-    active: false,
-    comingSoon: true,
-  },
-  {
-    id: 'reports-analytics',
-    label: 'Reports & Analytics',
-    icon: <Assessment />,
-    active: false,
-    comingSoon: true,
-  },
-  {
-    id: 'settings',
-    label: 'Settings',
-    icon: <Settings />,
-    active: false,
-    comingSoon: true,
   },
 ];
 
@@ -258,6 +232,36 @@ export function Sidebar({ open, onClose, variant = 'permanent' }: SidebarProps) 
         >
           Next Patient
         </Button>
+      </Box>
+
+      {/* Session History */}
+      <Box
+        sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}
+        role="region"
+        aria-labelledby="session-history-heading"
+      >
+        <Typography
+          id="session-history-heading"
+          variant="subtitle2"
+          sx={{ mb: 1.5, fontWeight: 600 }}
+        >
+          Session History
+        </Typography>
+
+        <Paper
+          elevation={0}
+          sx={{
+            p: 1.5,
+            backgroundColor: 'background.default',
+            border: 1,
+            borderColor: 'divider',
+            textAlign: 'center',
+          }}
+        >
+          <Typography variant="body2" color="text.secondary">
+            No previous sessions
+          </Typography>
+        </Paper>
       </Box>
 
       {/* Navigation Sections */}
