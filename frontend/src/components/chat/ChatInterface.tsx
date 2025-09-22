@@ -11,29 +11,37 @@ import {
   Card,
   CardContent,
   Stack,
-  LinearProgress
+  LinearProgress,
+  Button
 } from '@mui/material';
 import {
   Send as SendIcon,
   Clear as ClearIcon,
-  Description as DocumentIcon
+  Description as DocumentIcon,
+  Add as AddIcon,
+  Mic as MicIcon,
+  Upload as UploadIcon
 } from '@mui/icons-material';
-import { textProcessingService } from '../../services/text-processing.service';
-import type { JobStatusResponse, SOAPResult } from '../../services/text-processing.service';
+import { useSOAPGeneration } from '../../hooks/useSOAPGeneration';
+import type { SOAPResult } from '../../services/text-processing.service';
 import type { ChatMessage, ChatInterfaceProps } from '../../types/chat.types';
 import { AudioControls } from '../dashboard/AudioControls';
 
-const ChatInterfaceComponent = ({ 
-  onMessage, 
-  isProcessing: externalIsProcessing, 
+const ChatInterfaceComponent = ({
+  onMessage,
+  isProcessing: externalIsProcessing,
   placeholder = "Beschreiben Sie die Patientenbegegnung...",
   showHeader = true,
-  enableAudio = true 
+  enableAudio = true,
+  layoutMode = 'chat'
 }: ChatInterfaceProps = {}) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');
+
+  // Use the SOAP generation hook
+  const { generateSOAP } = useSOAPGeneration();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Use external processing state if provided
@@ -71,7 +79,7 @@ const ChatInterfaceComponent = ({
 
     const userText = inputText.trim();
     setInputText('');
-    
+
     // Add user message
     addMessage({
       type: 'user',
@@ -85,54 +93,63 @@ const ChatInterfaceComponent = ({
       isProcessing: true,
     });
 
-    setIsProcessing(true);
-    setProcessingStatus('Anfrage wird eingereicht...');
-
     try {
-      await textProcessingService.processTextToSOAP(
+      await generateSOAP(
         userText,
-        undefined, // sessionId - could be added later
-        (status: JobStatusResponse) => {
-          // Update processing status
-          const statusMessages = {
-            'QUEUED': 'Anfrage in Warteschlange...',
-            'PROCESSING': 'SOAP-Note wird generiert...',
-          };
-          
-          const statusMessage = statusMessages[status.status as keyof typeof statusMessages] 
-            || `Status: ${status.status}`;
-          
-          setProcessingStatus(statusMessage);
-          
-          if (status.progressMessage) {
-            updateMessage(processingMessageId, {
-              content: status.progressMessage,
-            });
-          }
-        }
-      ).then((soapResult: SOAPResult) => {
-        // Success - update message with SOAP result
-        updateMessage(processingMessageId, {
-          content: 'SOAP-Note wurde erfolgreich erstellt:',
-          isProcessing: false,
-          soapResult,
-        });
-      });
+        {
+          onStart: () => {
+            setIsProcessing(true);
+            setProcessingStatus('Anfrage wird eingereicht...');
+          },
+          onProgress: (status) => {
+            // Update processing status
+            const statusMessages = {
+              'QUEUED': 'Anfrage in Warteschlange...',
+              'PROCESSING': 'SOAP-Note wird generiert...',
+            };
 
+            const statusMessage = statusMessages[status.status as keyof typeof statusMessages]
+              || `Status: ${status.status}`;
+
+            setProcessingStatus(statusMessage);
+
+            if (status.progressMessage) {
+              updateMessage(processingMessageId, {
+                content: status.progressMessage,
+              });
+            }
+          },
+          onSuccess: (soapResult) => {
+            // Success - update message with SOAP result
+            updateMessage(processingMessageId, {
+              content: 'SOAP-Note wurde erfolgreich erstellt:',
+              isProcessing: false,
+              soapResult,
+            });
+          },
+          onError: (error) => {
+            console.error('Text processing failed:', error);
+
+            // Error - update message with error info
+            updateMessage(processingMessageId, {
+              content: 'Fehler bei der Verarbeitung',
+              isProcessing: false,
+              error,
+            });
+          },
+          onComplete: () => {
+            setIsProcessing(false);
+            setProcessingStatus('');
+          }
+        },
+        {
+          sessionId: undefined // Could be added later
+        }
+      );
     } catch (error) {
-      console.error('Text processing failed:', error);
-      
-      // Error - update message with error info
-      updateMessage(processingMessageId, {
-        content: 'Fehler bei der Verarbeitung',
-        isProcessing: false,
-        error: error instanceof Error ? error.message : 'Unbekannter Fehler',
-      });
-    } finally {
-      setIsProcessing(false);
-      setProcessingStatus('');
+      // Error handling is done in the hook callbacks
     }
-  }, [inputText, isProcessing, addMessage, updateMessage]);
+  }, [inputText, isProcessing, addMessage, updateMessage, generateSOAP]);
 
   const handleKeyPress = useCallback((event: React.KeyboardEvent) => {
     if (event.key === 'Enter' && !event.shiftKey) {
@@ -234,6 +251,197 @@ const ChatInterfaceComponent = ({
     </Box>
   );
 
+  // Workflow layout implementation
+  if (layoutMode === 'workflow') {
+    return (
+      <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {/* Progress Indicator */}
+        {currentIsProcessing && (
+          <LinearProgress sx={{ borderRadius: 1 }} />
+        )}
+
+        <Box sx={{ flexGrow: 1, display: 'flex', overflow: 'hidden' }}>
+          {/* Left Side - Input Areas */}
+          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', p: 2, gap: 2 }}>
+
+            {/* Transcripts Section */}
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Transcripts
+                </Typography>
+                <Stack direction="row" spacing={1}>
+                  {enableAudio && (
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<MicIcon />}
+                      disabled={currentIsProcessing}
+                    >
+                      Audio
+                    </Button>
+                  )}
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<AddIcon />}
+                    disabled={currentIsProcessing}
+                  >
+                    Add Transcript
+                  </Button>
+                </Stack>
+              </Box>
+
+              {/* Transcript Input Area */}
+              <Paper elevation={1} sx={{ p: 2, mb: 2 }}>
+                <TextField
+                  fullWidth
+                  multiline
+                  rows={6}
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder={placeholder}
+                  disabled={currentIsProcessing}
+                  variant="outlined"
+                  label="Patient Encounter Notes"
+                />
+
+                {/* Audio Controls in Workflow Mode */}
+                {enableAudio && (
+                  <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                    <AudioControls
+                      onTranscriptReady={(transcript: string) => {
+                        setInputText(prev => prev ? `${prev}\n\n${transcript}` : transcript);
+                      }}
+                      disabled={currentIsProcessing}
+                    />
+                  </Box>
+                )}
+              </Paper>
+            </Box>
+
+            {/* Context/Files Section */}
+            <Box>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                Context & Files
+              </Typography>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 3,
+                  textAlign: 'center',
+                  border: 2,
+                  borderColor: 'divider',
+                  borderStyle: 'dashed',
+                  bgcolor: 'grey.50'
+                }}
+              >
+                <UploadIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 1 }} />
+                <Typography variant="body2" color="text.secondary" gutterBottom>
+                  Drag & drop files here or click to browse
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Support for medical documents, lab results, etc.
+                </Typography>
+                <Box sx={{ mt: 2 }}>
+                  <Button variant="outlined" startIcon={<UploadIcon />} disabled>
+                    Browse Files
+                  </Button>
+                </Box>
+              </Paper>
+            </Box>
+
+            {/* Command Input */}
+            <Box>
+              <Button
+                variant="contained"
+                fullWidth
+                size="large"
+                onClick={handleSubmit}
+                disabled={!inputText.trim() || currentIsProcessing}
+                startIcon={currentIsProcessing ? <CircularProgress size={20} /> : <DocumentIcon />}
+                sx={{ minHeight: 56 }}
+              >
+                {currentIsProcessing ? 'Creating SOAP Note...' : 'Create SOAP Note'}
+              </Button>
+            </Box>
+          </Box>
+
+          {/* Right Side - Output Area */}
+          <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column', borderLeft: 1, borderColor: 'divider' }}>
+            <Box sx={{ p: 2, flexGrow: 1, overflow: 'auto' }}>
+              <Typography variant="h6" sx={{ fontWeight: 600, mb: 2 }}>
+                Generated SOAP Note
+              </Typography>
+
+              {messages.length === 0 ? (
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 4,
+                    textAlign: 'center',
+                    border: 1,
+                    borderColor: 'divider',
+                    bgcolor: 'background.default'
+                  }}
+                >
+                  <DocumentIcon sx={{ fontSize: 48, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="body1" color="text.secondary" gutterBottom>
+                    No SOAP note generated yet
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Enter patient notes and click "Create SOAP Note" to generate a structured medical note.
+                  </Typography>
+                </Paper>
+              ) : (
+                <Box>
+                  {/* Show only the latest SOAP result */}
+                  {(() => {
+                    const latestSoapMessage = [...messages].reverse().find(m => m.soapResult);
+                    if (latestSoapMessage?.soapResult) {
+                      return renderSOAPNote(latestSoapMessage.soapResult);
+                    }
+
+                    const latestMessage = messages[messages.length - 1];
+                    if (latestMessage?.isProcessing) {
+                      return (
+                        <Paper sx={{ p: 3 }}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+                            <CircularProgress size={24} sx={{ mr: 2 }} />
+                            <Typography variant="h6">
+                              Processing...
+                            </Typography>
+                          </Box>
+                          <Typography variant="body2" color="text.secondary">
+                            {processingStatus || 'Generating SOAP note from your input...'}
+                          </Typography>
+                        </Paper>
+                      );
+                    }
+
+                    if (latestMessage?.error) {
+                      return (
+                        <Alert severity="error">
+                          <Typography variant="subtitle2" gutterBottom>
+                            Processing Error
+                          </Typography>
+                          {latestMessage.error}
+                        </Alert>
+                      );
+                    }
+
+                    return null;
+                  })()}
+                </Box>
+              )}
+            </Box>
+          </Box>
+        </Box>
+      </Box>
+    );
+  }
+
+  // Default chat layout
   return (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       {/* Header */}

@@ -119,7 +119,7 @@ export function DashboardPage() {
               </Alert>
             )}
 
-            {/* Chat Interface Component - Exact same as before */}
+            {/* Chat Interface Component - With layoutMode support */}
             <Box sx={{ flexGrow: 1, overflow: 'hidden' }}>
               <ChatInterface
                 onMessage={handleNewMessage}
@@ -127,6 +127,7 @@ export function DashboardPage() {
                 placeholder="Beschreiben Sie die Patientenbegegnung..."
                 showHeader={false}
                 enableAudio={true}
+                layoutMode="workflow"
               />
             </Box>
           </Box>

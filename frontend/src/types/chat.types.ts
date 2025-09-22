@@ -27,6 +27,11 @@ export interface AudioRecordingState {
 }
 
 /**
+ * Layout modes for ChatInterface
+ */
+export type LayoutMode = 'chat' | 'workflow';
+
+/**
  * Chat interface component props
  */
 export interface ChatInterfaceProps {
@@ -40,6 +45,8 @@ export interface ChatInterfaceProps {
   showHeader?: boolean;
   /** Whether to enable audio functionality */
   enableAudio?: boolean;
+  /** Layout mode for the interface */
+  layoutMode?: LayoutMode;
 }
 
 /**
