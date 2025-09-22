@@ -20,7 +20,8 @@ import {
   Description as DocumentIcon,
   Add as AddIcon,
   Mic as MicIcon,
-  Upload as UploadIcon
+  Upload as UploadIcon,
+  ContentCopy as CopyIcon
 } from '@mui/icons-material';
 import { useSOAPGeneration } from '../../hooks/useSOAPGeneration';
 import type { SOAPResult } from '../../services/text-processing.service';
@@ -39,6 +40,7 @@ const ChatInterfaceComponent = ({
   const [inputText, setInputText] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState<string>('');
+  const [copyFeedback, setCopyFeedback] = useState<string>('');
 
   // Use the SOAP generation hook
   const { generateSOAP } = useSOAPGeneration();
@@ -146,7 +148,7 @@ const ChatInterfaceComponent = ({
           sessionId: undefined // Could be added later
         }
       );
-    } catch (error) {
+    } catch {
       // Error handling is done in the hook callbacks
     }
   }, [inputText, isProcessing, addMessage, updateMessage, generateSOAP]);
@@ -162,37 +164,87 @@ const ChatInterfaceComponent = ({
     setMessages([]);
   }, []);
 
+  const copyToClipboard = useCallback(async (content: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopyFeedback('Copied to clipboard!');
 
-  const renderSOAPNote = (soap: SOAPResult) => (
-    <Card sx={{ mt: 2, bgcolor: 'background.default' }}>
-      <CardContent>
-        <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-          <DocumentIcon sx={{ mr: 1, color: 'primary.main' }} />
-          <Typography variant="h6" color="primary">
-            SOAP-Note
-          </Typography>
-        </Box>
-        
-        <Box
-          component="pre"
-          sx={{ 
-            whiteSpace: 'pre-wrap',
-            fontFamily: 'inherit',
-            fontSize: '0.875rem',
-            lineHeight: 1.6,
-            margin: 0,
-            padding: 2,
-            bgcolor: 'grey.50',
-            borderRadius: 1,
-            border: '1px solid',
-            borderColor: 'divider'
-          }}
-        >
-          {typeof soap === 'string' ? soap : soap.textStructured || JSON.stringify(soap, null, 2)}
-        </Box>
-      </CardContent>
-    </Card>
-  );
+      // Clear feedback after 2 seconds
+      setTimeout(() => {
+        setCopyFeedback('');
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to copy to clipboard:', error);
+      setCopyFeedback('Failed to copy');
+
+      // Clear error feedback after 3 seconds
+      setTimeout(() => {
+        setCopyFeedback('');
+      }, 3000);
+    }
+  }, []);
+
+
+  const renderSOAPNote = (soap: SOAPResult) => {
+    const soapContent = typeof soap === 'string' ? soap : soap.textStructured || JSON.stringify(soap, null, 2);
+
+    return (
+      <Card sx={{ mt: 2, bgcolor: 'background.default' }}>
+        <CardContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <DocumentIcon sx={{ mr: 1, color: 'primary.main' }} />
+              <Typography variant="h6" color="primary">
+                SOAP-Note
+              </Typography>
+            </Box>
+
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              {copyFeedback && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    mr: 1,
+                    color: copyFeedback.includes('Failed') ? 'error.main' : 'success.main',
+                    fontSize: '0.75rem'
+                  }}
+                >
+                  {copyFeedback}
+                </Typography>
+              )}
+              <IconButton
+                onClick={() => copyToClipboard(soapContent)}
+                size="small"
+                color="primary"
+                aria-label="Copy SOAP note to clipboard"
+                title="Copy to clipboard"
+              >
+                <CopyIcon fontSize="small" />
+              </IconButton>
+            </Box>
+          </Box>
+
+          <Box
+            component="pre"
+            sx={{
+              whiteSpace: 'pre-wrap',
+              fontFamily: 'inherit',
+              fontSize: '0.875rem',
+              lineHeight: 1.6,
+              margin: 0,
+              padding: 2,
+              bgcolor: 'grey.50',
+              borderRadius: 1,
+              border: '1px solid',
+              borderColor: 'divider'
+            }}
+          >
+            {soapContent}
+          </Box>
+        </CardContent>
+      </Card>
+    );
+  };
 
   const renderMessage = (message: ChatMessage) => (
     <Box
